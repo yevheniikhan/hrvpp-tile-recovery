@@ -79,3 +79,41 @@ def test_gee_to_product_uses_official_encoding(tmp_path):
     with rasterio.open(out) as d:
         assert d.dtypes[0] == "int16" and d.nodata == -32768 and abs(d.scales[0] - 1e-4) < 1e-12
         assert "NOT an official" in d.tags()["SOURCE"]
+
+
+def test_truncated_download_is_detected_and_removed(tmp_path):
+    from hrvpp_recon import wekeo
+    good = tmp_path / "VPP_2021_S2_T34UFV-010m_V105_s1_TPROD.tif"
+    make_official(good, 600000, 5500020)
+    bad = tmp_path / "VPP_2021_S2_T34UGA-010m_V105_s1_TPROD.tif"
+    bad.write_bytes(good.read_bytes()[: good.stat().st_size // 3])
+    assert wekeo.is_valid_tif(good) and not wekeo.is_valid_tif(bad)
+    # only files of this query are counted; the truncated one is deleted
+    assert wekeo._valid_count(tmp_path, {"VPP_2021_S2_T34UGA-010m_V105_s1_TPROD"}) == 0
+    assert not bad.exists() and good.exists()
+
+
+def test_strip_calibration_recovers_known_linear_bias(tmp_path):
+    from hrvpp_recon.validate import strip_calibration
+    root = tmp_path / "official"
+    (root / "AMPL" / "2021").mkdir(parents=True)
+    # three "neighbours" overlapping the reconstruction, each with official = (recon - 0.04) / 0.9
+    rec = tmp_path / "rec.tif"
+    make_recon(rec, 600000, 5500020)
+    with rasterio.open(rec) as s:
+        a = s.read(1).astype("float64") / 1e4
+    for i, nb in enumerate(["TA", "TB", "TC"]):
+        off = root / "AMPL" / "2021" / f"VPP_2021_S2_{nb}-010m_V105_s1_AMPL.tif"
+        dn = np.round(((a - 0.04) / 0.9) / 1e-4).astype("int16")
+        with rasterio.open(off, "w", driver="GTiff", width=PX, height=PX, count=1, dtype="int16",
+                           crs="EPSG:32634", transform=from_origin(600000, 5500020, 10, 10), nodata=-32768) as d:
+            d.write(dn, 1)
+            d.scales = (1e-4,)
+    fits, loso, raw = strip_calibration(rec, root, 2021, ["AMPL"], ["TA", "TB", "TC"], max_pixels=None)
+    k, c = fits["AMPL"]
+    assert abs(k - 1 / 0.9) < 1e-3 and abs(c + 0.04 / 0.9) < 1e-3
+    assert all(abs(r["bias_cal"]) < 1e-3 for r in loso)
+    out = gee_to_product(rec, "AMPL", 2021, tmp_path / "CP", "T34UGV", official_tif=off, block=128,
+                         calibration=(k, c))
+    with rasterio.open(out) as d:
+        assert "official =" in d.tags()["CALIBRATION"]

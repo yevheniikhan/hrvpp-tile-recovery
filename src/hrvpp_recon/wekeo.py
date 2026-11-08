@@ -4,7 +4,11 @@ Differences to the original script (all additive, behaviour is unchanged):
 * credentials can come from Colab Secrets as well as environment variables;
 * `probe_bbox()` builds a tiny bbox around a point so that only one neighbouring tile is
   returned (used for validation, where only the tiles overlapping the gap are needed);
-* SHA-256 checksums are written so repeated downloads can be compared (reproducibility).
+* SHA-256 checksums are written so repeated downloads can be compared (reproducibility);
+* every downloaded GeoTIFF is opened and its last row is read; truncated files (an interrupted
+  HTTP stream leaves a partial file that the original script counts as "present") are deleted
+  and fetched again in the next pass. Observed on 08/11/2026: T34UFV TPROD 2021 stopped at
+  78.6 of 211 MB and was reported as complete by the file-count logic.
 """
 from __future__ import annotations
 
@@ -87,6 +91,34 @@ def sha256(path: Path, chunk: int = 1 << 20) -> str:
     return h.hexdigest()
 
 
+def is_valid_tif(path: Path) -> bool:
+    """True if the GeoTIFF opens and its last row can be decoded (detects truncated downloads)."""
+    try:
+        import rasterio
+        from rasterio.windows import Window
+        with rasterio.open(path) as src:
+            src.read(1, window=Window(0, src.height - 1, src.width, 1))
+        return True
+    except Exception:
+        return False
+
+
+def _valid_count(path: Path, ids=None) -> int:
+    """Count valid files; with `ids`, count only files belonging to this query's results."""
+    n = 0
+    for p in path.iterdir():
+        if not p.is_file() or p.name.startswith("."):
+            continue
+        if p.suffix.lower() in (".tif", ".tiff") and not is_valid_tif(p):
+            print(f"  removing truncated/corrupt file: {p.name} ({p.stat().st_size} bytes)")
+            p.unlink()
+            continue
+        if ids and not any(p.stem.startswith(i) or i.startswith(p.stem) for i in ids):
+            continue
+        n += 1
+    return n
+
+
 def probe_bbox(lon: float, lat: float, d: float = 0.005) -> List[float]:
     return [lon - d, lat - d, lon + d, lat + d]
 
@@ -101,15 +133,19 @@ def download_one(*, year: int, product: str, outdir: Path, bbox: List[float], wo
     expected_n = len(matches.results)
     path = outdir / product / str(year)
     path.mkdir(parents=True, exist_ok=True)
-    count = lambda: sum(1 for p in path.iterdir() if p.is_file() and not p.name.startswith("."))  # noqa: E731
-    downloaded_n, passes_used = count(), 0
+    ids = {_result_id(r) for r in matches.results}
+    ids = {i for i in ids if i.startswith("VPP_") or i.startswith("ST_")} or None
+    downloaded_n, passes_used = _valid_count(path, ids), 0
     if expected_n == 0:
         status = "no matches"
     else:
         for p in range(1, max_passes + 1):
             passes_used = p
-            matches.download(download_dir=str(path))
-            downloaded_n = count()
+            try:
+                matches.download(download_dir=str(path))
+            except Exception as e:  # interrupted stream: keep going, the check below decides
+                print(f"[{year} {product}] pass {p}: download error: {str(e)[:150]}")
+            downloaded_n = _valid_count(path, ids)
             print(f"[{year} {product}] pass {p}/{max_passes}: {downloaded_n} of {expected_n} files present")
             if downloaded_n >= expected_n:
                 break

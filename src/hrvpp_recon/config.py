@@ -103,6 +103,12 @@ GEE_EXPORT_FACTORS: Dict[str, float] = {
 }
 
 
+# Products to which the per-year overlap calibration is applied (decision from the 2021
+# full-overlap validation: AMPL biased +0.21 PPI, RSLOPE biased -0.009 PPI/day; LENGTH and
+# TPROD pass the acceptance thresholds uncalibrated and keep their natural variance).
+CALIBRATED_PRODUCTS: List[str] = ["AMPL", "RSLOPE"]
+
+
 @dataclass
 class ReconParams:
     """Parameters of the HR-VPP-like reconstruction (defaults follow the HR-VPP ATBD/PUM)."""

@@ -11,7 +11,7 @@ or extracted together without any special handling.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 import rasterio
@@ -47,8 +47,13 @@ def band_index(src: rasterio.io.DatasetReader, name: str) -> int:
 
 
 def gee_to_product(recon_tif: Path, product: str, year: int, out_root: Path, tile_id: str,
-                   official_tif: Optional[Path] = None, block: int = 2048) -> Path:
-    """Write one product of the reconstructed tile with the official HR-VPP encoding."""
+                   official_tif: Optional[Path] = None, block: int = 2048,
+                   calibration: Optional[Tuple[float, float]] = None) -> Path:
+    """Write one product of the reconstructed tile with the official HR-VPP encoding.
+
+    `calibration` = (k, c) applies official ~= k * reconstructed + c to the physical values
+    (fitted on the overlap strips of the same year, see validate.strip_calibration).
+    """
     enc = resolve_encoding(official_tif, product)
     factor = GEE_EXPORT_FACTORS.get(product, 1.0)
     out_dir = out_root / product / str(year)
@@ -68,6 +73,8 @@ def gee_to_product(recon_tif: Path, product: str, year: int, out_root: Path, til
                     a = src.read(bi, window=w).astype("float64")
                     nod = a == GEE_NODATA
                     phys = a / factor
+                    if calibration is not None:
+                        phys = calibration[0] * phys + calibration[1]
                     dn = np.round((phys - enc["offset"]) / enc["scale"])
                     dn = np.clip(dn, info.min, info.max)
                     dn[nod] = enc["nodata"]
@@ -82,7 +89,9 @@ def gee_to_product(recon_tif: Path, product: str, year: int, out_root: Path, til
                 PRODUCT=product, YEAR=str(year), TILE=tile_id, SEASON="1",
                 SOURCE="Reconstruction from Sentinel-2 (Earth Engine) - NOT an official CLMS product",
                 METHOD="HR-VPP-like PPI + 10-day composites + amplitude thresholds 25%/15%",
-                ENCODING_FROM=enc["source"], SOFTWARE="hrvpp-tile-recovery")
+                ENCODING_FROM=enc["source"], SOFTWARE="hrvpp-tile-recovery",
+                CALIBRATION=("none" if calibration is None else
+                             f"official = {calibration[0]:.6f} * recon + {calibration[1]:.6f} (overlap strips, {year})"))
     return out
 
 

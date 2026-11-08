@@ -91,3 +91,44 @@ def coverage_stats(official_tif: Path, recon_tif: Path, recon_band: str) -> Dict
     return {"pixels": int(tot), "official_valid_pct": 100 * va.mean(), "recon_valid_pct": 100 * vb.mean(),
             "both_valid_pct": 100 * (va & vb).mean(), "official_only_pct": 100 * (va & ~vb).mean(),
             "recon_only_pct": 100 * (~va & vb).mean()}
+
+
+def strip_calibration(recon_tif: Path, official_root: Path, year: int, products, neighbours,
+                      max_pixels: int = 1_000_000):
+    """Fit official ~ k * recon + c per product on all overlap strips of `year`, and report a
+    leave-one-strip-out check (fit on two strips, test on the third).
+
+    Returns (fits: {product: (k, c)}, loso: list of dicts, raw: list of dicts).
+    """
+    store, raw = {}, []
+    for nb in neighbours:
+        for prod in products:
+            hits = sorted((Path(official_root) / prod / str(year)).glob(f"*{nb}*_s1_{prod}.tif"))
+            if not hits:
+                continue
+            a, b = overlap_arrays(recon_tif, prod, hits[0], max_pixels=max_pixels)
+            store[(nb, prod)] = (a, b)
+            m = metrics(a, b)
+            m.update(neighbour=nb, product=prod, year=year)
+            raw.append(m)
+    fits, loso = {}, []
+    for prod in products:
+        nbs = [nb for nb in neighbours if (nb, prod) in store]
+        if not nbs:
+            continue
+        a = np.concatenate([store[(n, prod)][0] for n in nbs])
+        b = np.concatenate([store[(n, prod)][1] for n in nbs])
+        k, c = np.polyfit(b, a, 1)
+        fits[prod] = (float(k), float(c))
+        for test in nbs:
+            tr = [n for n in nbs if n != test]
+            if not tr:
+                continue
+            ka, ca = np.polyfit(np.concatenate([store[(n, prod)][1] for n in tr]),
+                                np.concatenate([store[(n, prod)][0] for n in tr]), 1)
+            ref, est = store[(test, prod)]
+            r0, r1 = metrics(ref, est), metrics(ref, ka * est + ca)
+            loso.append({"year": year, "product": prod, "test_strip": test, "k": ka, "c": ca, "r": r0["r"],
+                         "bias_raw": r0["bias"], "bias_cal": r1["bias"], "rmse_raw": r0["rmse"],
+                         "rmse_cal": r1["rmse"], "rrmse_raw": r0["rrmse_pct"], "rrmse_cal": r1["rrmse_pct"]})
+    return fits, loso, raw

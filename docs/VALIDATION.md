@@ -95,3 +95,59 @@ DVI (as in the ATBD) is the obvious next improvement.
 
 **Reproducibility.** Downloads are integrity-checked (two truncated WEkEO transfers were caught and repeated during
 this run); the export file is read back and validated before use.
+
+## Results for 2017–2023 (run of 08–09/11/2026)
+
+Same protocol for every year: official neighbours of that year downloaded from WEkEO (72 files; two more truncated
+transfers, 2018 AMPL T34UGU and 2020 RSLOPE T34UFV, were detected and re-downloaded), full-overlap comparison on
+1 000 000 random pixels per strip, calibration fitted on that year's own strips. All 28 product-year files
+(4 products × 7 years) are written in the MONIFUN layout; 98.9–99.1 % of the tile has a valid season in every year.
+Tables: `reports/06_validation_full_overlap_all_years.csv`, `06_loso_calibration_all_years.csv`,
+`06_per_strip_all_years.csv`, `calibration_YYYY.json`, `07_years_status.json`.
+
+**Uncalibrated accuracy** (mean of the three strips; bias = reconstructed − official):
+
+| year | AMPL r | AMPL bias | LENGTH r | LENGTH bias d | RSLOPE r | TPROD r | TPROD bias | TPROD rRMSE % |
+|---|---|---|---|---|---|---|---|---|
+| 2017 | 0.824 | +0.39 | 0.682 | +2.8 | 0.558 | 0.931 | +11.4 | 17.8 |
+| 2018 | 0.858 | +0.37 | 0.668 | +7.9 | 0.619 | 0.926 | +10.2 | 17.3 |
+| 2019 | 0.860 | +0.36 | 0.714 | +4.1 | 0.576 | 0.939 | +14.6 | 17.2 |
+| 2020 | 0.785 | +0.55 | 0.623 | −4.1 | 0.494 | 0.896 | +21.1 | 23.4 |
+| 2021 | 0.824 | +0.21 | 0.710 | +6.2 | 0.664 | 0.925 | +1.1 | 14.9 |
+| 2022 | 0.844 | +0.25 | 0.700 | +2.2 | 0.557 | 0.929 | +4.2 | 17.1 |
+| 2023 | 0.854 | +0.28 | 0.691 | +0.8 | 0.662 | 0.920 | +5.8 | 18.0 |
+
+**Calibration actually applied** (official ≈ k · recon + c, all three strips of the year; stored in the GeoTIFF tag
+`CALIBRATION`) and its leave-one-strip-out check (largest held-out abs(bias) after calibration):
+
+| year | AMPL k, c | AMPL max held-out abs(bias) | RSLOPE k, c | RSLOPE max held-out abs(bias) |
+|---|---|---|---|---|
+| 2017 | 0.800, −0.025 | 0.091 | 0.894, 0.0057 | 0.0027 |
+| 2018 | 0.881, −0.155 | 0.011 | 1.001, 0.0040 | 0.0017 |
+| 2019 | 0.846, −0.079 | 0.041 | 0.908, 0.0060 | 0.0043 |
+| 2020 | 0.781, −0.137 | 0.094 | 0.774, 0.0050 | 0.0030 |
+| 2021 | 0.918, −0.040 | 0.098 | 1.163, 0.0067 | 0.0020 |
+| 2022 | 0.951, −0.159 | 0.058 | 1.016, 0.0052 | 0.0032 |
+| 2023 | 0.989, −0.263 | 0.055 | 1.139, 0.0033 | 0.0049 |
+
+Mean held-out AMPL rRMSE falls from 24–51 % to 20–28 % after calibration; RSLOPE from 60–66 % to 52–64 %.
+
+**Against the acceptance thresholds**
+
+- **AMPL** passes in every year after calibration (held-out abs(bias) ≤ 0.10 in all 21 strip-years). Uncalibrated r
+  is 0.79–0.86; 2020 is marginally below 0.80. The coefficients differ between years (k 0.78–0.99, c −0.26 to −0.03),
+  which confirms that the calibration must be fitted per year, not once.
+- **LENGTH** passes uncalibrated in every year (r 0.62–0.71, abs(bias) ≤ 8 days). Calibration is not applied: the
+  held-out check is inconsistent (it worsens 2020 and 2023).
+- **RSLOPE** passes r ≥ 0.50 in 6 of 7 years (2020: 0.494) and is unbiased after calibration, but remains the noisiest
+  parameter (rRMSE 52–64 %). Use with caution.
+- **TPROD** has the highest correlation (0.90–0.94) and passes in 6 of 7 years. **2020 fails** the rRMSE threshold
+  uncalibrated (23.4 %, bias +21); a linear calibration would bring it to 17.3 % in the held-out check. In 2017–2019
+  the positive bias (+10 to +15) is also visible. A year-specific TPROD calibration is therefore an option for WP3
+  to decide; it is not applied in the delivered files.
+- **2020** is the weakest year for every product (lower r, larger biases). Users should flag T34UGV plots in 2020
+  or treat them with lower weight.
+
+The positive AMPL and TPROD bias in all years is consistent with the clipped winter minimum described above; a
+tile-adaptive soil DVI remains the main candidate improvement. Why 2020 is weaker has not been investigated yet
+(candidates: winter observation density, the 2020 spring drought).

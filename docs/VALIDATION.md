@@ -47,7 +47,51 @@ error should be clearly smaller than the between-pixel variability of the offici
 If a product fails, the recommended action for MONIFUN is to keep the product as missing for T34UGV plots
 (or flag the plots) rather than use the reconstruction.
 
-## Results
+## Results for 2021 (run of 08/11/2026)
 
-Results are written by the notebook to `reports/` (`05_validation_points.csv`, `06_validation_full_overlap.csv`,
-`REPORT.md`, scatter plots). See the run report in the project Drive folder.
+Earth Engine project `gen-lang-client-0200925587`; 1 828 Sentinel-2 scenes in the 2021 window; 99.7 % of T34UGV
+received a valid season.
+
+**Implementation check.** On 291 random pixels, the Earth Engine metrics and the NumPy reference agree exactly
+(maximum absolute difference 0 for AMPL, LENGTH, RSLOPE, MAXV, MINV, SOS, EOS; 5.7e-14 for TPROD).
+
+**Accuracy, full overlap** (exported 10 m tile vs official V105 tiles; 1 000 000 random pixels per strip; the
+pixel-centre comparison with 600 points per strip gave the same picture):
+
+| strip | product | r | bias | RMSE | rRMSE % | valid in both % |
+|---|---|---|---|---|---|---|
+| T34UFV | AMPL | 0.832 | +0.165 | 0.426 | 23.8 | 99.0 |
+| T34UFV | LENGTH | 0.706 | +7.5 d | 27.5 d | 19.2 | 99.0 |
+| T34UFV | RSLOPE | 0.692 | −0.010 | 0.016 | 63.2 | 99.0 |
+| T34UFV | TPROD | 0.919 | −1.9 | 26.2 | 15.6 | 99.0 |
+| T34UGA | AMPL | 0.813 | +0.294 | 0.486 | 24.7 | 96.3 |
+| T34UGA | LENGTH | 0.743 | +3.9 d | 26.2 d | 19.9 | 96.3 |
+| T34UGA | RSLOPE | 0.712 | −0.011 | 0.019 | 60.5 | 96.3 |
+| T34UGA | TPROD | 0.935 | +7.5 | 23.5 | 14.1 | 96.3 |
+| T34UGU | AMPL | 0.827 | +0.164 | 0.424 | 24.3 | 99.5 |
+| T34UGU | LENGTH | 0.682 | +7.3 d | 27.6 d | 18.6 | 99.5 |
+| T34UGU | RSLOPE | 0.587 | −0.008 | 0.014 | 66.1 | 99.5 |
+| T34UGU | TPROD | 0.921 | −2.2 | 25.4 | 15.0 | 99.5 |
+
+**Leave-one-strip-out linear calibration** (official = k · recon + c fitted on two strips, tested on the third; mean
+over the three tests):
+
+| product | r | bias raw → cal | rRMSE raw → cal % | decision |
+|---|---|---|---|---|
+| AMPL | 0.824 | +0.208 → −0.003 | 24.3 → 21.6 | **calibrate** (all-strip fit k = 0.918, c = −0.040) |
+| RSLOPE | 0.664 | −0.0094 → −0.0002 | 63.3 → 52.1 | **calibrate** (k = 1.164, c = 0.0067) |
+| LENGTH | 0.710 | +6.2 d → +0.5 d | 19.3 → 17.2 | keep uncalibrated: passes thresholds; k = 0.69 would compress natural variance |
+| TPROD | 0.925 | +1.1 → 0.0 | 14.9 → 15.2 | keep uncalibrated: no gain |
+
+**Against the acceptance thresholds:** TPROD and LENGTH pass uncalibrated; AMPL passes after calibration (bias within
+±0.10 in every held-out strip); RSLOPE passes the r threshold and is unbiased after calibration but remains the
+noisiest parameter (rRMSE ≈ 50 %), as expected from the different slope definition (10-day differences vs TIMESAT
+derivative). For every year the calibration is re-fitted on that year's own overlap strips
+(`validate.strip_calibration`) and written to the GeoTIFF tag `CALIBRATION`.
+
+**Likely cause of the AMPL bias.** The reconstructed winter minimum (MINV) often reaches 0 because winter DVI falls
+below the constant soil DVI (0.09) and PPI is clipped at 0; a lower base increases the amplitude. A tile-adaptive soil
+DVI (as in the ATBD) is the obvious next improvement.
+
+**Reproducibility.** Downloads are integrity-checked (two truncated WEkEO transfers were caught and repeated during
+this run); the export file is read back and validated before use.

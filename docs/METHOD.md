@@ -65,7 +65,15 @@ Only peaks inside year Y are considered. Bins from October to March without a cl
 **Quality screening.** A pixel gets no season (nodata) if AMPL < 0.05, LENGTH < 30 days, or fewer than 8 clear
 observations fall in the window.
 
-## 3. Output and encoding
+## 3. Calibration on the overlap strips
+
+The 2021 validation (docs/VALIDATION.md) showed a systematic offset for AMPL (+0.21 PPI) and RSLOPE (−0.009 PPI/day)
+with good correlation. Because the gap is surrounded by official tiles that overlap it by ~10 km, every year carries
+its own calibration data. For AMPL and RSLOPE (`config.CALIBRATED_PRODUCTS`) a linear mapping official = k · recon + c
+is fitted on all overlap pixels of the same year and applied when the MONIFUN files are written; the coefficients are
+stored in the GeoTIFF tag `CALIBRATION` and in `reports/calibration_<year>.json`. LENGTH and TPROD are not calibrated.
+
+## 4. Output and encoding
 
 The Earth Engine export is an Int16 multi-band GeoTIFF on the exact T34UGV grid (bands AMPL, LENGTH,
 RSLOPE, TPROD, SOSD, EOSD, NOBS; internal factors in `config.GEE_EXPORT_FACTORS`). `postprocess.py` converts each
@@ -79,9 +87,22 @@ This is the folder layout expected by the MONIFUN extraction scripts (`_run_extr
 the GeoTIFF tag `SOURCE = Reconstruction from Sentinel-2 (Earth Engine) - NOT an official CLMS product`.
 
 Note on TPROD encoding: the Product User Manual gives a factor of 10 (scale 0.1), while the VITO catalogue band
-metadata gives scale 0.02. The code never assumes either: it reads the scale from an official file.
+metadata gives scale 0.02. The official 2021 V105 files (checked on 08/11/2026) carry **uint16, scale 0.1, nodata
+65535** for TPROD; AMPL and RSLOPE are int16, scale 0.0001, nodata -32768; LENGTH is int16, scale 1, nodata 0. The code
+still reads the encoding from an official file rather than assuming it.
 
-## 4. Known limitations
+Grid check: the official neighbour T34UFV has its upper-left corner at x = 600 000 m, y = 5 500 020 m (EPSG:32634),
+which confirms the Sentinel-2 grid used for T34UGV (x = 699 960 m) and the pixel alignment in the overlap strips.
+
+## 5. Download integrity (issue found in the MONIFUN script)
+
+`download_copernicus_pheno.py` decides that a product is complete by counting files in the output folder. An
+interrupted HTTP stream leaves a partial GeoTIFF that is counted as present, so the script reports `ok` for a corrupt
+file. This happened during this work (T34UFV TPROD 2021: 78.6 of 211 MB). `wekeo.py` therefore opens every GeoTIFF and
+reads its last row after each pass, deletes truncated files and downloads them again. It is worth passing this check
+back to the MONIFUN data team, because a truncated tile silently turns into missing values at NFI plots.
+
+## 6. Known limitations
 
 * No TIMESAT double-logistic fitting. Expect slightly noisier SOS/EOS and larger RSLOPE scatter than the official
   product. AMPL and TPROD are least affected.
@@ -90,7 +111,7 @@ metadata gives scale 0.02. The code never assumes either: it reads the scale fro
   is biased low. The validation for these years should be read separately.
 * Only season 1 is reconstructed (as needed by MONIFUN).
 
-## 5. References
+## 7. References
 
 * CLMS (2023). HR-VPP ATBD — Daily raw vegetation indices, issue 1.1 (PPI formula, §5.2.1).
 * CLMS. HR-VPP Product User Manual — Seasonal Trajectories and VPP parameters, issue 2.3 (definitions, thresholds,

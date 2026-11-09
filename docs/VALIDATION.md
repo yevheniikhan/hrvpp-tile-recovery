@@ -89,9 +89,10 @@ noisiest parameter (rRMSE ≈ 50 %), as expected from the different slope defini
 derivative). For every year the calibration is re-fitted on that year's own overlap strips
 (`validate.strip_calibration`) and written to the GeoTIFF tag `CALIBRATION`.
 
-**Likely cause of the AMPL bias.** The reconstructed winter minimum (MINV) often reaches 0 because winter DVI falls
-below the constant soil DVI (0.09) and PPI is clipped at 0; a lower base increases the amplitude. A tile-adaptive soil
-DVI (as in the ATBD) is the obvious next improvement.
+**Cause of the AMPL bias.** The first guess was a clipped winter minimum (MINV = 0 where winter DVI falls below the
+constant soil DVI). The soil-DVI sensitivity test below rejects it: the bias grows as fewer pixels are clipped.
+The bias therefore comes from the peak side (MAXV), which has not been checked yet because the official MAXV
+files were not downloaded.
 
 **Reproducibility.** Downloads are integrity-checked (two truncated WEkEO transfers were caught and repeated during
 this run); the export file is read back and validated before use.
@@ -148,6 +149,43 @@ Mean held-out AMPL rRMSE falls from 24–51 % to 20–28 % after calibration; RS
 - **2020** is the weakest year for every product (lower r, larger biases). Users should flag T34UGV plots in 2020
   or treat them with lower weight.
 
-The positive AMPL and TPROD bias in all years is consistent with the clipped winter minimum described above; a
-tile-adaptive soil DVI remains the main candidate improvement. Why 2020 is weaker has not been investigated yet
-(candidates: winter observation density, the 2020 spring drought).
+The positive AMPL bias in all years is not explained by the soil DVI (see the sensitivity test below). Why 2020 is
+weaker has not been investigated yet (candidates: winter observation density, the 2020 spring drought).
+
+## Iteration 2: sensitivity to the soil DVI (09/11/2026)
+
+The constant soil DVI (0.09) was varied on three 4 × 4 km blocks, one in each overlap strip (≈ 478 000 pixels per
+setting, batch exports; `reports/08_sensitivity_dvi_soil_2021.csv`, `..._2020.csv`). Values are means over the
+three blocks, uncalibrated.
+
+**2021**
+
+| soil DVI | AMPL r / bias | LENGTH r / bias d | RSLOPE r | TPROD r / bias / rRMSE % | MINV = 0 % |
+|---|---|---|---|---|---|
+| 0.05 | 0.793 / +0.32 | 0.692 / +12.2 | 0.538 | 0.912 / +21.8 / 19.8 | 11 |
+| 0.07 | 0.793 / +0.28 | 0.704 / +8.5 | 0.570 | 0.917 / +13.2 / 16.6 | 17 |
+| **0.09** (used) | 0.792 / +0.24 | 0.711 / +4.6 | 0.595 | 0.921 / +4.4 / 14.5 | 33 |
+| 0.11 | 0.789 / +0.20 | 0.753 / −0.9 | 0.612 | 0.928 / −5.1 / 13.8 | 52 |
+| 0.13 | 0.787 / +0.15 | 0.790 / −6.4 | 0.627 | 0.933 / −14.7 / 15.5 | 68 |
+| 0.15 | 0.783 / +0.10 | 0.800 / −11.4 | 0.639 | 0.935 / −24.2 / 19.0 | 80 |
+| 0.18 | 0.777 / +0.01 | 0.785 / −18.7 | 0.649 | 0.933 / −38.7 / 25.9 | 92 |
+
+**2020 (weakest year)**
+
+| soil DVI | AMPL r / bias | LENGTH r / bias d | RSLOPE r | TPROD r / bias / rRMSE % |
+|---|---|---|---|---|
+| **0.09** (used) | 0.685 / +0.62 | 0.725 / −5.0 | 0.444 | 0.881 / +26.7 / 25.2 |
+| 0.11 | 0.680 / +0.57 | 0.724 / −9.4 | 0.467 | 0.880 / +17.8 / 21.0 |
+| 0.13 | 0.675 / +0.52 | 0.718 / −14.0 | 0.491 | 0.877 / +8.6 / 18.1 |
+
+**Conclusions**
+
+1. Raising the soil DVI shifts LENGTH down by ≈ 4–5.5 days and TPROD down by ≈ 9 units per 0.02 step, in both years.
+   It moves the biases but does not remove their year-to-year differences: LENGTH is +4.6 days in 2021 and −5.0 days
+   in 2020 at the same setting, so any single value that fixes one year worsens the other.
+2. Correlations hardly change for AMPL and TPROD; RSLOPE gains slightly at higher values.
+3. **Decision:** keep 0.09 and the delivered files unchanged. A per-year linear calibration on the overlap strips
+   removes the same biases without re-running the reconstruction, and is already applied to AMPL and RSLOPE.
+   Extending it to TPROD in 2020 (and possibly 2017–2019) is the cheaper fix if WP3 wants it.
+4. Next candidates for the remaining AMPL bias: the peak side (MAXV, the tile-constant δ in MDVI, the median
+   compositing). Testing them needs the official MAXV and MINV files of the neighbours.

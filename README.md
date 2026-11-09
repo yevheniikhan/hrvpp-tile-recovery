@@ -29,7 +29,7 @@ Kalush, Stryi). It is missing from the CLMS catalogue for every year 2017–2025
 5. **Writes MONIFUN-ready files** with the official encoding:
    `Copernicus_Phenology/<PRODUCT>/<YEAR>/VPP_<YEAR>_S2_T34UGV-010m_RECON_s1_<PRODUCT>.tif`.
 
-Details: [`docs/METHOD.md`](docs/METHOD.md) · [`docs/VALIDATION.md`](docs/VALIDATION.md) ·
+Details: [`docs/METHOD.md`](docs/METHOD.md) · [`docs/MONIFUN_ISSUE.md`](docs/MONIFUN_ISSUE.md) · [`docs/VALIDATION.md`](docs/VALIDATION.md) ·
 [`docs/RUNBOOK.md`](docs/RUNBOOK.md)
 
 ## Quick start (Google Colab)
@@ -71,6 +71,13 @@ pytest -q
   tags, and should be reported as gap-filled.
 * The method approximates, but does not replicate, the operational TIMESAT processing. See the limitations in
   `docs/METHOD.md` and the validation results before using the data.
+* **Produced (09/11/2026):** all 28 product-years (AMPL, LENGTH, RSLOPE, TPROD × 2017–2023), ≈ 99 % of the tile
+  with a valid season. AMPL and RSLOPE are calibrated per year on that year's overlap strips.
+* **Accuracy in the overlap strips (uncalibrated r):** TPROD 0.90–0.94, AMPL 0.79–0.86, LENGTH 0.62–0.71,
+  RSLOPE 0.49–0.66. After calibration AMPL held-out abs(bias) ≤ 0.10 in every strip-year. **2020 is the weakest
+  year** (TPROD rRMSE 23 %); flag T34UGV plots in 2020. Full tables in `docs/VALIDATION.md`.
+* **Bug found in the MONIFUN download logic:** truncated WEkEO transfers are counted as complete files.
+  See [`docs/MONIFUN_ISSUE.md`](docs/MONIFUN_ISSUE.md).
 
 ## Licence and data
 
@@ -86,3 +93,7 @@ data were modified.
 2017–2025. Ноутбук підтверджує відсутність тайла, відтворює параметри AMPL, LENGTH, RSLOPE, TPROD із Sentinel-2
 в Google Earth Engine за методикою HR-VPP, перевіряє точність на смугах перекриття з офіційними сусідніми тайлами і
 записує файли в структуру папок MONIFUN.
+
+Стан на 09.11.2026: відновлено всі 7 років (2017–2023), 28 файлів. Найточніший параметр TPROD (r 0,90–0,94),
+найменш надійний RSLOPE. Рік 2020 найслабший, ділянки T34UGV за 2020 рік варто позначати. Знайдено помилку в
+логіці завантаження MONIFUN: обірвані завантаження з WEkEO рахуються як повні файли (`docs/MONIFUN_ISSUE.md`).

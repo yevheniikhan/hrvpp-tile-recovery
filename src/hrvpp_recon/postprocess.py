@@ -11,7 +11,11 @@ or extracted together without any special handling.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+import os
+import re
+import shutil
+import tempfile
+from typing import Callable, Dict, Optional, Tuple
 
 import numpy as np
 import rasterio
@@ -46,6 +50,65 @@ def band_index(src: rasterio.io.DatasetReader, name: str) -> int:
     raise KeyError(f"band {name} not found in {src.name}: {src.descriptions}")
 
 
+def harmonise_metadata(dst, product: str, year: int, official_tif: Optional[Path]):
+    """Copy band description, units and band tags of the official product (year substituted),
+    so the reconstructed band looks like the official one in GIS and extraction scripts."""
+    desc, units, btags = PRODUCT_SPECS[product].description, PRODUCT_SPECS[product].unit, {}
+    if official_tif and Path(official_tif).exists():
+        with rasterio.open(official_tif) as src:
+            if src.descriptions[0]:
+                desc = re.sub(r"(19|20)\d\d", str(year), src.descriptions[0], count=1)
+            units = src.units[0] or units
+            btags = src.tags(1)
+    dst.set_band_description(1, desc)
+    if units:
+        dst.set_band_unit(1, units)
+    if btags:
+        dst.update_tags(1, **btags)
+
+
+def write_product(recon_tif: Path, product: str, year: int, out_root: Path, tile_id: str,
+                  phys_fn: Callable, official_tif: Optional[Path] = None, block: int = 2048,
+                  extra_tags: Optional[Dict[str, str]] = None) -> Path:
+    """Write one product with the official encoding; `phys_fn(src, window)` returns physical values
+    (NaN = no season)."""
+    enc = resolve_encoding(official_tif, product)
+    out_dir = out_root / product / str(year)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out = out_dir / f"VPP_{year}_S2_{tile_id}-010m_RECON_s1_{product}.tif"
+    # write locally, then copy: block-wise GeoTIFF writes on a FUSE-mounted Drive are very slow
+    tmp = Path(tempfile.gettempdir()) / f"_{os.getpid()}_{out.name}"  # unique per process
+    info = np.iinfo(np.dtype(enc["dtype"]))
+    with rasterio.open(recon_tif) as src:
+        prof = src.profile.copy()
+        prof.update(count=1, dtype=enc["dtype"], nodata=enc["nodata"], compress="deflate",
+                    predictor=2, tiled=True, blockxsize=512, blockysize=512, BIGTIFF="IF_SAFER")
+        prof.pop("photometric", None)
+        with rasterio.open(tmp, "w", **prof) as dst:
+            for r in range(0, src.height, block):
+                for c in range(0, src.width, block):
+                    w = Window(c, r, min(block, src.width - c), min(block, src.height - r))
+                    phys = np.asarray(phys_fn(src, w), dtype="float64")
+                    nod = ~np.isfinite(phys)
+                    dn = np.round((np.where(nod, 0, phys) - enc["offset"]) / enc["scale"])
+                    dn = np.clip(dn, info.min, info.max)
+                    if enc["nodata"] is not None:
+                        # never let a valid value collide with nodata
+                        dn[(~nod) & (dn == enc["nodata"])] += 1 if enc["nodata"] <= 0 else -1
+                        dn[nod] = enc["nodata"]
+                    dst.write(dn.astype(enc["dtype"]), 1, window=w)
+            dst.scales = (enc["scale"],)
+            dst.offsets = (enc["offset"],)
+            harmonise_metadata(dst, product, year, official_tif)
+            dst.update_tags(
+                PRODUCT=product, YEAR=str(year), TILE=tile_id, SEASON="1",
+                SOURCE="Reconstruction from Sentinel-2 (Earth Engine) - NOT an official CLMS product",
+                METHOD="HR-VPP-like PPI + 10-day composites + amplitude thresholds 25%/15%",
+                ENCODING_FROM=enc["source"], SOFTWARE="hrvpp-tile-recovery", **(extra_tags or {}))
+    shutil.move(str(tmp), str(out))
+    return out
+
+
 def gee_to_product(recon_tif: Path, product: str, year: int, out_root: Path, tile_id: str,
                    official_tif: Optional[Path] = None, block: int = 2048,
                    calibration: Optional[Tuple[float, float]] = None) -> Path:
@@ -54,45 +117,17 @@ def gee_to_product(recon_tif: Path, product: str, year: int, out_root: Path, til
     `calibration` = (k, c) applies official ~= k * reconstructed + c to the physical values
     (fitted on the overlap strips of the same year, see validate.strip_calibration).
     """
-    enc = resolve_encoding(official_tif, product)
     factor = GEE_EXPORT_FACTORS.get(product, 1.0)
-    out_dir = out_root / product / str(year)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out = out_dir / f"VPP_{year}_S2_{tile_id}-010m_RECON_s1_{product}.tif"
-    info = np.iinfo(np.dtype(enc["dtype"]))
-    with rasterio.open(recon_tif) as src:
-        bi = band_index(src, product)
-        prof = src.profile.copy()
-        prof.update(count=1, dtype=enc["dtype"], nodata=enc["nodata"], compress="deflate",
-                    predictor=2, tiled=True, blockxsize=512, blockysize=512, BIGTIFF="IF_SAFER")
-        prof.pop("photometric", None)
-        with rasterio.open(out, "w", **prof) as dst:
-            for r in range(0, src.height, block):
-                for c in range(0, src.width, block):
-                    w = Window(c, r, min(block, src.width - c), min(block, src.height - r))
-                    a = src.read(bi, window=w).astype("float64")
-                    nod = a == GEE_NODATA
-                    phys = a / factor
-                    if calibration is not None:
-                        phys = calibration[0] * phys + calibration[1]
-                    dn = np.round((phys - enc["offset"]) / enc["scale"])
-                    dn = np.clip(dn, info.min, info.max)
-                    dn[nod] = enc["nodata"]
-                    if enc["nodata"] is not None:
-                        # never let a valid value collide with nodata
-                        dn[(~nod) & (dn == enc["nodata"])] += 1 if enc["nodata"] <= 0 else -1
-                    dst.write(dn.astype(enc["dtype"]), 1, window=w)
-            dst.scales = (enc["scale"],)
-            dst.offsets = (enc["offset"],)
-            dst.set_band_description(1, product)
-            dst.update_tags(
-                PRODUCT=product, YEAR=str(year), TILE=tile_id, SEASON="1",
-                SOURCE="Reconstruction from Sentinel-2 (Earth Engine) - NOT an official CLMS product",
-                METHOD="HR-VPP-like PPI + 10-day composites + amplitude thresholds 25%/15%",
-                ENCODING_FROM=enc["source"], SOFTWARE="hrvpp-tile-recovery",
-                CALIBRATION=("none" if calibration is None else
-                             f"official = {calibration[0]:.6f} * recon + {calibration[1]:.6f} (overlap strips, {year})"))
-    return out
+
+    def phys_fn(src, w):
+        a = src.read(band_index(src, product), window=w).astype("float64")
+        phys = np.where(a == GEE_NODATA, np.nan, a / factor)
+        return phys if calibration is None else calibration[0] * phys + calibration[1]
+
+    cal = ("none" if calibration is None else
+           f"official = {calibration[0]:.6f} * recon + {calibration[1]:.6f} (overlap strips, {year})")
+    return write_product(recon_tif, product, year, out_root, tile_id, phys_fn, official_tif, block,
+                         {"CALIBRATION": cal})
 
 
 def read_physical(path: Path, band: int = 1, window: Optional[Window] = None) -> np.ndarray:

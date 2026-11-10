@@ -28,6 +28,13 @@ Evidence (08/11/2026):
 
 The gap is therefore a production gap. Re-downloading cannot fill it.
 
+**Wider gap east of T34UGV (found 10/11/2026).** Point probes of the catalogue (0.25° × 0.2° grid, 2021 AMPL s1)
+show that there is no official product at all east of ≈25.3° E and north of ≈48.8° N: the UTM-35 tiles north of
+row P (Ternopil, Khmelnytskyi, Rivne regions) are missing too. A study area that follows the Dniester or reaches
+Ternopil therefore leaves T34UGV/T34UGA on its eastern side. An extension `T34UGVE` is reconstructed with the
+same algorithm on the T34UGV grid (EPSG:32634): x 799 760–869 760 m, y 5 390 220–5 560 020 m
+(≈25.1–26.1° E, 48.6–50.2° N, 7 000 × 16 980 px), overlapping T34UGV by 10 km so that the seam can be checked.
+
 ## 2. Reconstruction algorithm
 
 The algorithm follows the published HR-VPP documents wherever they give a definitive specification and
@@ -65,13 +72,28 @@ Only peaks inside year Y are considered. Bins from October to March without a cl
 **Quality screening.** A pixel gets no season (nodata) if AMPL < 0.05, LENGTH < 30 days, or fewer than 8 clear
 observations fall in the window.
 
-## 3. Calibration on the overlap strips
+## 3. Correction learned from the official tiles
 
-The 2021 validation (docs/VALIDATION.md) showed a systematic offset for AMPL (+0.21 PPI) and RSLOPE (−0.009 PPI/day)
-with good correlation. Because the gap is surrounded by official tiles that overlap it by ~10 km, every year carries
-its own calibration data. For AMPL and RSLOPE (`config.CALIBRATED_PRODUCTS`) a linear mapping official = k · recon + c
-is fitted on all overlap pixels of the same year and applied when the MONIFUN files are written; the coefficients are
-stored in the GeoTIFF tag `CALIBRATION` and in `reports/calibration_<year>.json`. LENGTH and TPROD are not calibrated.
+The reconstruction is not the operational TIMESAT processing, so its values differ systematically from the official
+product. The official neighbours overlap the reconstruction by ~10 km on every side (T34UFV west, T34UGA north,
+T34UGU south, and T35ULP in the south-east corner, reprojected from UTM 35 with nearest neighbour). For every year
+these strips give millions of pixels where both are known, and they are used as training data (`learn.py`):
+
+* features: all bands of the reconstruction (AMPL, LENGTH, RSLOPE, TPROD, start and end of season as day of year,
+  number of observations);
+* target: the official value of the product;
+* model: gradient boosting (`HistGradientBoostingRegressor`, 40 trees × 15 leaves), followed by a quantile mapping of its output onto the
+  official distribution, so the corrected tile keeps the spread and texture of its neighbours (`gbm_qm`);
+* fitted per product and per year on all strips of that year (200 000 pixels per strip).
+
+The method was chosen by a leave-one-strip-out test on 2021 (train on three strips, predict the fourth, which is the
+situation of the gap) against no correction, the earlier linear calibration, quantile mapping alone and gradient
+boosting alone (docs/VALIDATION.md, iteration 3). The multivariate model wins for every product; the quantile step
+costs little accuracy but keeps the standard deviation within 2 % of the official one, which is what makes the patch
+blend in visually. The extension T34UGVE has no official overlap of its own except a strip of T35ULP, so it is
+corrected with the model of T34UGV of the same year and the T35ULP strip is kept as an independent check.
+
+The first delivery (linear calibration of AMPL and RSLOPE only) is kept in `Copernicus_Phenology_v1_linear/`.
 
 ## 4. Output and encoding
 
@@ -85,6 +107,10 @@ Copernicus_Phenology/<PRODUCT>/<YEAR>/VPP_<YEAR>_S2_T34UGV-010m_RECON_s1_<PRODUC
 
 This is the folder layout expected by the MONIFUN extraction scripts (`_run_extract_xbyx_*.R`). Each file carries
 the GeoTIFF tag `SOURCE = Reconstruction from Sentinel-2 (Earth Engine) - NOT an official CLMS product`.
+
+Band metadata are copied from the official file of the same product, with the year substituted: band description
+(e.g. `Seasonal amplitude 2024-season1`), unit and the band tag `PhysRange`. Before 10/11/2026 the band description
+was the bare product name (`AMPL`), which shows up as a different band name in GIS and extraction tools.
 
 Note on TPROD encoding: the Product User Manual gives a factor of 10 (scale 0.1), while the VITO catalogue band
 metadata gives scale 0.02. The official 2021 V105 files (checked on 08/11/2026) carry **uint16, scale 0.1, nodata
@@ -107,6 +133,9 @@ back to the MONIFUN data team, because a truncated tile silently turns into miss
 * No TIMESAT double-logistic fitting. Expect slightly noisier SOS/EOS and larger RSLOPE scatter than the official
   product. AMPL and TPROD are least affected.
 * Constant soil DVI and a tile-constant δ in MDVI. This mainly affects sparsely vegetated or bright-soil pixels.
+  Varying the soil DVI only shifts the biases (docs/VALIDATION.md, iteration 2); the learned correction removes them.
+* The learned correction is trained in the overlap strips. Landscapes that do not occur in the strips (e.g. high
+  Carpathian forest) are extrapolated; the strips do cover forest, arable land and the Dniester valley.
 * 2017 (and partly 2018) rely on L1C top-of-atmosphere reflectance where L2A is missing in Earth Engine. PPI from TOA
   is biased low. The validation for these years should be read separately.
 * Only season 1 is reconstructed (as needed by MONIFUN).

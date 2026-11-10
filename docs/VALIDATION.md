@@ -189,3 +189,64 @@ three blocks, uncalibrated.
    Extending it to TPROD in 2020 (and possibly 2017–2019) is the cheaper fix if WP3 wants it.
 4. Next candidates for the remaining AMPL bias: the peak side (MAXV, the tile-constant δ in MDVI, the median
    compositing). Testing them needs the official MAXV and MINV files of the neighbours.
+
+## Iteration 3: correction learned from the official tiles (10/11/2026)
+
+Prompted by the visible seam between the patch and the official tiles. Training data: the overlap strips with
+T34UFV, T34UGA, T34UGU and, new, T35ULP (south-east corner, reprojected from UTM 35); 200 000 pixels per strip.
+Leave-one-strip-out: each strip is predicted by a model trained on the other three. Means over the four held-out
+strips, 2021 (`reports/10_learned_correction_loso_2021.csv`):
+
+| product | method | r | abs(bias) | rRMSE % | std ratio (est / official) |
+|---|---|---|---|---|---|
+| AMPL | none | 0.817 | 0.226 | 24.8 | 0.86 |
+| AMPL | linear (v1) | 0.817 | 0.070 | 21.7 | 0.80 |
+| AMPL | quantile mapping | 0.814 | 0.098 | 22.9 | 0.98 |
+| AMPL | gradient boosting | 0.859 | 0.047 | 19.1 | 0.85 |
+| AMPL | **gradient boosting + quantile mapping** | 0.857 | 0.062 | 19.9 | 0.98 |
+| LENGTH | none | 0.734 | 5.0 d | 18.0 | 1.02 |
+| LENGTH | linear | 0.734 | 2.6 d | 16.6 | 0.74 |
+| LENGTH | gradient boosting | 0.848 | 1.0 d | 12.4 | 0.84 |
+| LENGTH | **gradient boosting + quantile mapping** | 0.843 | 1.6 d | 13.0 | 0.98 |
+| RSLOPE | none | 0.664 | 0.009 | 64.0 | 0.58 |
+| RSLOPE | linear (v1) | 0.664 | 0.002 | 53.5 | 0.68 |
+| RSLOPE | gradient boosting | 0.852 | 0.001 | 37.1 | 0.85 |
+| RSLOPE | **gradient boosting + quantile mapping** | 0.852 | 0.001 | 38.4 | 0.98 |
+| TPROD | none | 0.924 | 4.3 | 14.7 | 0.92 |
+| TPROD | linear | 0.924 | 5.8 | 14.8 | 0.92 |
+| TPROD | gradient boosting | 0.937 | 4.0 | 13.4 | 0.94 |
+| TPROD | **gradient boosting + quantile mapping** | 0.935 | 4.1 | 13.9 | 1.01 |
+
+The multivariate model gains most where a single parameter of the reconstruction is a poor predictor of its official
+counterpart: RSLOPE (r 0.66 → 0.85) and LENGTH (0.73 → 0.85); the other parameters, above all the season dates,
+carry the information. Plain gradient boosting shrinks the spread (std ratio 0.84–0.94), which makes the patch look
+smoother than its neighbours; the added quantile mapping restores the spread (0.98–1.01) at a small cost in RMSE.
+**Decision:** gradient boosting + quantile mapping for all four products, fitted per year on that year's strips.
+
+**Model size.** The table above uses 300 trees × 63 leaves. Predicting a whole tile (120 M pixels) with that model
+takes about 1.5 h per product on the 2-CPU Colab runtime, so production uses 40 trees × 15 leaves: 9 times faster,
+held-out rRMSE (2021) AMPL 19.3 instead of 19.0 %, RSLOPE 38.6 instead of 37.1 %, LENGTH 12.9 instead of 12.4 %.
+A third-order polynomial ridge regression was also tested (AMPL 19.8, RSLOPE 40.4, LENGTH 13.1, TPROD 13.8 %) and is
+slightly worse at similar speed.
+
+### Production results 2017–2023 (10/11/2026)
+
+Same protocol for every year, four strips (T34UFV, T34UGA, T34UGU, T35ULP), production model (40 trees × 15 leaves)
+plus quantile mapping; held-out means (`reports/11_loso_all_years.csv`). rRMSE in %, r in brackets:
+
+| year | AMPL none → corrected | LENGTH none → corrected | RSLOPE none → corrected | TPROD none → corrected |
+|---|---|---|---|---|
+| 2017 | 36.4 (0.81) → 24.3 (0.85) | 19.9 (0.70) → 15.9 (0.80) | 67.5 (0.53) → 49.5 (0.79) | 17.2 (0.93) → 16.0 (0.93) |
+| 2018 | 34.2 (0.85) → 21.0 (0.87) | 20.0 (0.67) → 15.4 (0.80) | 67.0 (0.61) → 49.9 (0.81) | 17.2 (0.93) → 15.4 (0.93) |
+| 2019 | 34.2 (0.85) → 19.6 (0.87) | 19.0 (0.74) → 13.4 (0.84) | 60.6 (0.58) → 39.0 (0.83) | 18.0 (0.94) → 13.5 (0.94) |
+| 2020 | 51.0 (0.78) → 26.1 (0.81) | 21.6 (0.62) → 15.9 (0.79) | 64.2 (0.49) → 50.2 (0.75) | 23.2 (0.90) → 17.0 (0.90) |
+| 2021 | 24.8 (0.82) → 20.2 (0.85) | 18.0 (0.73) → 13.7 (0.83) | 64.0 (0.66) → 40.2 (0.84) | 14.7 (0.92) → 14.8 (0.93) |
+| 2022 | 30.0 (0.84) → 22.2 (0.88) | 21.9 (0.67) → 19.3 (0.77) | 65.2 (0.53) → 50.7 (0.75) | 17.8 (0.93) → 16.6 (0.94) |
+| 2023 | 29.0 (0.85) → 22.4 (0.87) | 19.9 (0.70) → 15.5 (0.82) | 67.3 (0.67) → 46.5 (0.85) | 18.0 (0.91) → 18.2 (0.92) |
+
+The standard deviation of the corrected values is 0.95–1.05 of the official one in every product-year (uncorrected
+0.58–1.16), i.e. the patch now has the spread of its neighbours. The gain is largest for RSLOPE and LENGTH and for
+the weakest year 2020; for TPROD the correction mainly removes the 2017–2020 bias and matches the spread (rRMSE is
+within 0.3 points of the uncorrected value in 2021 and 2023). All 28 files 2017–2023 for T34UGV are in
+`Copernicus_Phenology/` with the official band description, unit and PhysRange tag; the first delivery is kept in
+`Copernicus_Phenology_v1_linear/`. 2024 and the extension T34UGVE depend on the Earth Engine exports still running.

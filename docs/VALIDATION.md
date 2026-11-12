@@ -49,7 +49,7 @@ If a product fails, the recommended action for MONIFUN is to keep the product as
 
 ## Results for 2021 (run of 08/11/2026)
 
-Earth Engine project `gen-lang-client-0200925587`; 1 828 Sentinel-2 scenes in the 2021 window; 99.7 % of T34UGV
+Earth Engine noncommercial project; 1 828 Sentinel-2 scenes in the 2021 window; 99.7 % of T34UGV
 received a valid season.
 
 **Implementation check.** On 291 random pixels, the Earth Engine metrics and the NumPy reference agree exactly

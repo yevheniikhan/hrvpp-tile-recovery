@@ -8,3 +8,7 @@ reports/
 .ipynb_checkpoints/
 .env
 .hdarc
+data/
+*.env
+.env
+credentials*.json

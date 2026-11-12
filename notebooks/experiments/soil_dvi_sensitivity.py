@@ -1,12 +1,13 @@
 #@title Iteration 2: soil-DVI sensitivity (2021) on 4x4 km blocks in the three overlap strips (batch exports, no timeouts)
 # Run in the Colab notebook after the setup cells (needs ROOT, Earth Engine auth and the official 2021 files).
+import os
 import time, numpy as np, pandas as pd, rasterio, ee
 from pathlib import Path
 from hrvpp_recon import gee_recon, validate, eedrive
 from hrvpp_recon.config import ReconParams, GEE_EXPORT_FACTORS
 
 Y = 2021  # also run with 2020
-EE_PROJ = "gen-lang-client-0200925587"
+EE_PROJ = os.environ["EE_PROJECT"]  # your Cloud project registered for Earth Engine
 OFFICIAL = Path("/content/official"); REP = Path(ROOT) / "reports"; SENS = Path("/content/sens")
 PRODS = ["AMPL", "LENGTH", "RSLOPE", "TPROD"]
 BLOCKS = {"T34UFV": (702000, 5452000), "T34UGA": (740000, 5497000), "T34UGU": (740000, 5397000)}  # UL corner, 400x400 px

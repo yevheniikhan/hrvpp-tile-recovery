@@ -43,12 +43,53 @@ NEIGHBOURS: Dict[str, S2Tile] = {
     "T34UGU": S2Tile("T34UGU", 32634, 699960.0, 5400000.0),   # south
 }
 
+@dataclass(frozen=True)
+class Grid:
+    """A rectangular area on a 10 m UTM grid (upper-left corner, size in pixels)."""
+
+    name: str
+    epsg: int
+    x0: float               # upper-left X (m)
+    y1: float               # upper-left Y (m)
+    width: int              # pixels
+    height: int             # pixels
+    res: float = 10.0
+
+    @property
+    def bounds(self) -> Tuple[float, float, float, float]:
+        return (self.x0, self.y1 - self.height * self.res, self.x0 + self.width * self.res, self.y1)
+
+    @property
+    def crs(self) -> str:
+        return f"EPSG:{self.epsg}"
+
+    @classmethod
+    def from_tile(cls, tile: "S2Tile") -> "Grid":
+        return cls(tile.tile_id, tile.epsg, tile.ulx, tile.uly, tile.size_px, tile.size_px, tile.res)
+
+
+# Areas reconstructed in this project.
+#   T34UGV : the missing Sentinel-2 tile itself.
+#   T34UGVE: east extension (no official HR-VPP east of T34UGV/T34UGA at all): 10 km overlap with T34UGV,
+#            then east to ~26.1 E, 48.6-50.2 N. Same 10 m grid as T34UGV.
+REGIONS: Dict[str, Grid] = {
+    "T34UGV": Grid("T34UGV", 32634, 699960.0, 5500020.0, 10980, 10980),
+    "T34UGVE": Grid("T34UGVE", 32634, 799760.0, 5560020.0, 7000, 16980),
+}
+
+# Official tiles whose overlap with each region is used to learn the correction.
+REGION_NEIGHBOURS: Dict[str, List[str]] = {
+    "T34UGV": ["T34UFV", "T34UGA", "T34UGU", "T35ULP"],
+    "T34UGVE": ["T34UGA", "T35ULP"],
+}
+
 # Points inside the ~10 km overlap strips between the gap and each official neighbour.
 # A tiny bbox around such a point returns exactly that neighbour from WEkEO HDA.
 NEIGHBOUR_PROBES: Dict[str, Tuple[float, float]] = {
     "T34UFV": (23.84, 49.10),
     "T34UGA": (24.50, 49.57),
     "T34UGU": (24.50, 48.65),
+    "T35ULP": (25.50, 48.65),   # zone 35; overlaps T34UGV in the south-east and the east extension in the south
 }
 
 # Approximate lon/lat footprint of the gap (used for catalogue / HDA searches).
@@ -57,6 +98,8 @@ GAP_BBOX_LONLAT = [23.71, 48.59, 25.29, 49.62]
 # MONIFUN WP3 uses these four VPP parameters (season 1) for 2017-2023.
 MONIFUN_PRODUCTS: List[str] = ["AMPL", "LENGTH", "RSLOPE", "TPROD"]
 MONIFUN_YEARS = list(range(2017, 2024))
+# Years with official HR-VPP (needed to calibrate a reconstruction); 2025 had none on 12/11/2026.
+CALIBRATION_YEARS = list(range(2017, 2025))
 
 # WEkEO HDA dataset (UTM tiles, as in MONIFUN download_copernicus_pheno.py)
 HDA_DATASET_ID = "EO:EEA:DAT:CLMS_HRVPP_VPP"

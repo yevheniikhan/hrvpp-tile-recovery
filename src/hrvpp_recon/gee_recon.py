@@ -27,7 +27,7 @@ from typing import Dict, List, Optional
 
 import ee
 
-from .config import GEE_EXPORT_FACTORS, MISSING_TILE, ReconParams, S2Tile
+from .config import GEE_EXPORT_FACTORS, MISSING_TILE, Grid, ReconParams, S2Tile
 
 S2_SR = "COPERNICUS/S2_SR_HARMONIZED"
 S2_L1C = "COPERNICUS/S2_HARMONIZED"
@@ -282,10 +282,40 @@ def reconstruct_year(year: int, tile: S2Tile = MISSING_TILE, p: Optional[ReconPa
             "smoothed": smoothed_array(series, year, p), "n_scenes": dvi.size(), "params": p}
 
 
+def export_region(year: int, folder: str, grid: Grid, p: Optional[ReconParams] = None,
+                  products: Optional[List[str]] = None, prefix: str = "RECON",
+                  mdvi_region: Optional[ee.Geometry] = None, start: bool = True) -> ee.batch.Task:
+    """Drive export of the season-1 parameters for any area on a 10 m UTM grid.
+
+    Int16 DN with the factors of config.GEE_EXPORT_FACTORS, nodata -32768, bands
+    AMPL, LENGTH, RSLOPE, TPROD, SOSD, EOSD, MAXV, MINV, NOBS (same as the Code Editor script).
+    Large areas are split by Earth Engine into row shards; scripts/mosaic_shards.py merges them.
+    """
+    products = products or ["AMPL", "LENGTH", "RSLOPE", "TPROD", "SOSD", "EOSD", "MAXV", "MINV"]
+    region = ee.Geometry.Rectangle(list(grid.bounds), grid.crs, False)
+    m = reconstruct_year(year, p=p, region=mdvi_region or region)["metrics"]
+    bands = []
+    for prod in products:
+        b = m.select(prod)
+        f = GEE_EXPORT_FACTORS.get(prod)
+        bands.append(b.multiply(f).round() if f else b.round())
+    img = ee.Image.cat(bands).addBands(m.select("NOBS")).unmask(-32768).toInt16()
+    task = ee.batch.Export.image.toDrive(
+        image=img, description=f"{prefix}_{grid.name}_{year}", folder=folder,
+        fileNamePrefix=f"{prefix}_VPP_{year}_S2_{grid.name}-{int(grid.res):03d}m_s1",
+        crs=grid.crs, crsTransform=[grid.res, 0, grid.x0, 0, -grid.res, grid.y1],
+        dimensions=f"{grid.width}x{grid.height}", maxPixels=1e10,
+        fileDimensions=[((grid.width + 255) // 256) * 256, ((grid.height + 255) // 256) * 256],
+        formatOptions={"cloudOptimized": True})
+    if start:
+        task.start()
+    return task
+
+
 def export_year(year: int, folder: str, tile: S2Tile = MISSING_TILE,
                 products: Optional[List[str]] = None, p: Optional[ReconParams] = None,
                 scale: float = 10.0, prefix: str = "RECON") -> ee.batch.Task:
-    """Start a Drive export of the reconstructed parameters (Int16 DN, nodata -32768, see config)."""
+    """Start a Drive export of the reconstructed parameters for a whole Sentinel-2 tile."""
     products = products or ["AMPL", "LENGTH", "RSLOPE", "TPROD", "SOSD", "EOSD"]
     m = reconstruct_year(year, tile, p)["metrics"]
     bands = []

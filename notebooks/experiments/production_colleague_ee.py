@@ -17,6 +17,7 @@ For each year:
 Usage: python production_colleague_ee.py 2018,2019,... [shard folder, default /content/colleague]
 Report: reports/13_colleague_<year>.json, reports/13_colleague_loso_<year>.csv
 """
+import os
 import json
 import shutil
 import sys
@@ -24,7 +25,7 @@ import time
 import traceback
 from pathlib import Path
 
-ROOT = Path("/content/drive/MyDrive/HRVPP_T34UGV_recovery")
+ROOT = Path(os.getenv("HRVPP_ROOT", "/content/drive/MyDrive/HRVPP_T34UGV_recovery"))
 sys.path.insert(0, str(ROOT / "src"))
 import numpy as np  # noqa: E402
 import rasterio  # noqa: E402

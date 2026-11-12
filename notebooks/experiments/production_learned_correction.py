@@ -6,14 +6,15 @@ Phase 2, every year: wait for the T34UGVE export, write it with the T34UGV model
 check it against T35ULP (independent) and against corrected T34UGV in the 10 km overlap.
 Existing outputs are kept (restartable). Log: reports/11_production.log; results: reports/11_production_<year>.json
 """
+import os
 import json, sys, time, traceback
 from pathlib import Path
 
-ROOT = Path("/content/drive/MyDrive/HRVPP_T34UGV_recovery"); sys.path.insert(0, str(ROOT / "src"))
+ROOT = Path(os.getenv("HRVPP_ROOT", "/content/drive/MyDrive/HRVPP_T34UGV_recovery")); sys.path.insert(0, str(ROOT / "src"))
 import ee, numpy as np, pandas as pd
 from hrvpp_recon import learn, postprocess, eedrive, wekeo, validate
 
-EE_PROJ = "gen-lang-client-0200925587"
+EE_PROJ = os.environ["EE_PROJECT"]  # your Cloud project registered for Earth Engine
 ee.Initialize(project=EE_PROJ)
 LOCAL = Path("/content/recon"); OFFD = ROOT / "official"; REP = ROOT / "reports"
 OUT = ROOT / "Copernicus_Phenology"

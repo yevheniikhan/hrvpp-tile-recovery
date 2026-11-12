@@ -1,0 +1,5 @@
+# route without Earth Engine (scripts/local_reconstruct.py): Sentinel-2 L2A from Microsoft Planetary Computer
+-r requirements.txt
+pystac-client>=0.7
+planetary-computer>=1.0
+# GPU (optional; Colab has it preinstalled): cupy-cuda12x

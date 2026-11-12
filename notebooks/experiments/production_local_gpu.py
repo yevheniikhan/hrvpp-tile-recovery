@@ -12,6 +12,7 @@ For each year:
 
 Usage: python production_local_gpu.py 2021,2018,... ; log to reports/12_gpu_production.log
 """
+import os
 import json
 import shutil
 import sys
@@ -19,7 +20,7 @@ import time
 import traceback
 from pathlib import Path
 
-ROOT = Path("/content/drive/MyDrive/HRVPP_T34UGV_recovery")
+ROOT = Path(os.getenv("HRVPP_ROOT", "/content/drive/MyDrive/HRVPP_T34UGV_recovery"))
 sys.path.insert(0, str(ROOT / "src"))
 import pandas as pd  # noqa: E402
 from hrvpp_recon import learn, postprocess, s2local, validate, wekeo  # noqa: E402

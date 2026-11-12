@@ -1,9 +1,5 @@
 # hrvpp-tile-recovery
 
-[![tests](https://github.com/yevheniikhan/hrvpp-tile-recovery/actions/workflows/tests.yml/badge.svg)](https://github.com/yevheniikhan/hrvpp-tile-recovery/actions/workflows/tests.yml)
-![python](https://img.shields.io/badge/python-3.9%2B-blue)
-![license](https://img.shields.io/badge/license-MIT-green)
-
 **Reconstruction of missing Copernicus HR-VPP vegetation phenology data from Sentinel-2, with a learned
 correction to the official product and pixel-level validation.**
 
@@ -120,8 +116,7 @@ scripts/             command-line steps 1–5 (see above)
 gee/                 Earth Engine Code Editor version of the reconstruction
 notebooks/           Colab notebook; experiments/ holds the scripts as run for the published numbers
 tests/               unit and end-to-end tests on synthetic rasters
-docs/                method, validation, reproduction guide, runbook, MONIFUN download issue,
-                     Ukrainian explanation of the validation
+docs/                method, validation, reproduction guide, runbook, MONIFUN download issue
 ```
 
 ## Known issue in the MONIFUN download script
@@ -134,20 +129,3 @@ downloads; the issue and a patch are in [`docs/MONIFUN_ISSUE.md`](docs/MONIFUN_I
 Code under the MIT licence. Please cite the repository ([`CITATION.cff`](CITATION.cff)) and the HR-VPP product
 (Copernicus Land Monitoring Service, HR-VPP, © European Union). Sentinel-2 data: © Copernicus / ESA.
 
----
-
-## Українською
-
-**Що це.** Відновлення відсутніх даних Copernicus HR-VPP (фенологія та продуктивність рослинності, 10 м) для
-тайла T34UGV і території на схід від нього (T34UGVE, Тернопільщина) за 2017–2024 роки. Розрахунок іде з
-Sentinel-2 за алгоритмом HR-VPP, потім модель корекції, навчена на перекритті з офіційними тайлами, наближає
-значення до офіційного продукту. Файли записуються у структуру MONIFUN і читаються R-скриптами без змін.
-
-**Точність** (перевірка на смугах, яких модель не бачила; відносна похибка після корекції): AMPL 20–29 %,
-LENGTH 13–21 %, RSLOPE 33–51 %, TPROD 14–21 %. Розширення стикується з T34UGV без помітного шва (r 0,96–0,99).
-
-**Як повторити:** покрокова інструкція в [`docs/REPRODUCE.md`](docs/REPRODUCE.md); пояснення перевірки простою
-мовою в [`docs/ПЕРЕВІРКА_пояснення.md`](docs/ПЕРЕВІРКА_пояснення.md).
-
-**Важливо.** Відновлені файли не є офіційними продуктами CLMS: у назві є `_RECON_`, у метаданих позначки
-`SOURCE` і `CALIBRATION`. У звітах і публікаціях їх треба позначати як відновлені.

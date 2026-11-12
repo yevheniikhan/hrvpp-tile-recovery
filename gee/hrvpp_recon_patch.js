@@ -13,6 +13,9 @@
  *  4. Share the Drive folder with the person who asked for the run. Do not rename the files.
  *
  * MODE = 'test' prints values at a few pixels for a quick comparison with the Python version.
+ *
+ * Other areas: set X0/X1/Y0/Y1 (EPSG:32634, multiples of 10 m) and TILE_ID. For another UTM zone also change the
+ * EPSG code in the two places below. The raw exports are then corrected with scripts/calibrate.py.
  */
 
 // ------------------------------------------------------------------ settings

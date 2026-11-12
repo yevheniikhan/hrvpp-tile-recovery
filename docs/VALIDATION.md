@@ -250,3 +250,50 @@ the weakest year 2020; for TPROD the correction mainly removes the 2017–2020 b
 within 0.3 points of the uncorrected value in 2021 and 2023). All 28 files 2017–2023 for T34UGV are in
 `Copernicus_Phenology/` with the official band description, unit and PhysRange tag; the first delivery is kept in
 `Copernicus_Phenology_v1_linear/`. 2024 and the extension T34UGVE depend on the Earth Engine exports still running.
+
+## East extension T34UGVE 2018–2024 from a colleague's Earth Engine run (12/11/2026)
+
+The extension (EPSG:32634, x 799760–869760, y 5390220–5560020, 7000 × 16980 px) was computed with
+`gee/hrvpp_recon_patch.js` in the Code Editor under a colleague's Earth Engine quota (2018–2025; Earth Engine split
+each year into three row shards). `notebooks/experiments/production_colleague_ee.py` mosaics the shards (grid
+checked against the expected one for every year), learns the gbm_qm correction on the extension's own overlap with
+the official T34UGA (10 km strip in the north-west) and T35ULP, and writes `Copernicus_Phenology/<P>/<Y>/
+VPP_<Y>_S2_T34UGVE-010m_RECON_s1_<P>.tif`. The T34UGV raw exports used for the 2017 extension are no longer on
+Drive, so the extension is calibrated on its own official neighbours here. 2025 is not processed: there is no
+official HR-VPP 2025 to calibrate or check against.
+
+Leave-one-neighbour-out (train on T34UGA, test on T35ULP and the other way round), mean rRMSE %,
+uncorrected → corrected (`reports/13_colleague_loso_<year>.csv`):
+
+| year | AMPL | LENGTH | RSLOPE | TPROD |
+|---|---|---|---|---|
+| 2018 | 44.6 → 29.1 | 28.8 → 20.2 | 61.9 → 49.3 | 25.5 → 20.8 |
+| 2019 | 33.6 → 24.7 | 19.9 → 18.3 | 57.7 → 42.3 | 17.5 → 15.9 |
+| 2020 | 40.2 → 25.2 | 27.8 → 18.5 | 58.0 → 44.8 | 21.8 → 18.4 |
+| 2021 | 27.1 → 20.1 | 23.4 → 16.0 | 59.9 → 33.8 | 18.0 → 16.4 |
+| 2022 | 38.7 → 27.4 | 23.8 → 20.8 | 62.5 → 47.8 | 21.1 → 18.5 |
+| 2023 | 27.8 → 22.0 | 23.7 → 17.6 | 58.8 → 34.8 | 18.2 → 20.1 |
+| 2024 | 29.6 → 23.4 | 22.4 → 17.7 | 59.7 → 33.2 | 19.6 → 20.8 |
+
+For TPROD the correction does not help in 2023 and 2024 (the raw values are already close); it is kept for a
+consistent spread across years.
+
+Agreement with the corrected T34UGV in the 10 km overlap (`reports/13_colleague_<year>.json`, 500 000 pixels):
+r 0.96–0.99 for AMPL, 0.97–0.98 LENGTH, 0.96–0.98 RSLOPE, 0.98–0.99 TPROD; rRMSE 6–12 %, 8–10 %, 16–21 %, 7–10 %.
+The extension's season is 5–8 days longer than in T34UGV (T34UGV is calibrated on four strips, the extension on two),
+so the seam is small but present in LENGTH.
+
+Cross-check with the independent GPU pipeline (Sentinel-2 L2A from Planetary Computer, SCL mask, correction trained
+on the T34UGV strips) on the same grid:
+
+| year | level | AMPL r / rRMSE | LENGTH r / rRMSE / bias | RSLOPE r / rRMSE | TPROD r / rRMSE |
+|---|---|---|---|---|---|
+| 2021 | raw | 0.90 / 15.0 % | 0.89 / 15.7 % / +1.8 d | 0.81 / 38.2 % | 0.94 / 15.6 % |
+| 2021 | corrected | 0.89 / 17.9 % | 0.93 / 13.0 % / −6.9 d | 0.91 / 28.3 % | 0.92 / 15.4 % |
+| 2024 | raw | 0.97 / 6.9 % | 0.96 / 10.2 % / −0.8 d | 0.95 / 19.7 % | 0.99 / 6.2 % |
+| 2024 | corrected | 0.95 / 13.0 % | 0.96 / 12.9 % / −8.7 d | 0.96 / 21.2 % | 0.96 / 13.0 % |
+
+(bias = GPU − Earth Engine). The two implementations agree well on the raw metrics, best in 2024; after correction
+the remaining difference is mostly the season length, where the GPU version is 7–9 days shorter because its model
+comes from different strips. The Earth Engine version is kept as the delivery (better seam with T34UGV, calibrated
+on the extension's own neighbours); the GPU files stay in `Copernicus_Phenology_gpu/` as an independent check.

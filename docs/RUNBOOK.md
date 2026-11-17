@@ -5,7 +5,7 @@
 | what | where |
 |---|---|
 | WEkEO account | <https://wekeo.copernicus.eu> → register (free) |
-| Colab Secrets | Colab left bar → 🔑 → add `WEKEO_USER`, `WEKEO_PASSWORD`, enable "Notebook access" |
+| Colab Secrets | Colab left bar → Secrets → add `WEKEO_USER`, `WEKEO_PASSWORD`, enable "Notebook access" |
 | Earth Engine project | <https://code.earthengine.google.com> → note the Cloud project ID, or create one registered for Earth Engine |
 | Drive folder | `MyDrive/HRVPP_T34UGV_recovery` containing `src/`, `notebooks/`, `docs/` |
 

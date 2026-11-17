@@ -115,4 +115,4 @@ Any rectangle on a 10 m UTM grid works:
 2. download the official tiles that overlap it (step 2, `--probe TILE:lon,lat` for tiles not in the config);
 3. calibrate with `--tile-id NAME --neighbours TILE1,TILE2`.
 
-The correction needs an overlap with at least one official tile; two or more give an honest held-out check.
+The correction needs an overlap with at least one official tile; two or more allow a held-out check.

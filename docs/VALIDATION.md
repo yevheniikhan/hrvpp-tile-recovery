@@ -1,62 +1,144 @@
-# Validation protocol
+# Validation
 
-## Design
+This document describes how the accuracy of the reconstructed files was assessed and reports the results. Section 4
+refers to the delivered files in `Copernicus_Phenology/`. The appendices document the earlier versions and the tests
+that led to the final method.
 
-T34UGV overlaps three official HR-VPP tiles by ~10 km. In those strips official and reconstructed pixels lie on the
-same 10 m Sentinel-2 grid, so they can be compared directly without resampling.
+## 1. Design
 
-| neighbour | position | overlap strip (EPSG:32634) |
-|---|---|---|
-| T34UFV | west | x 699 960–709 800 |
-| T34UGA | north | y 5 490 240–5 500 020 |
-| T34UGU | south | y 5 390 220–5 400 000 |
+Every reconstructed area overlaps official HR-VPP tiles by about 10 km. In the overlap strips the official and the
+reconstructed pixels lie on the same 10 m Sentinel-2 grid (T35ULP is reprojected from UTM zone 35 by nearest
+neighbour), so the two can be compared pixel by pixel.
 
-Landscape in the strips (Carpathian foothills, Dniester valley, mixed forest and arable land) is representative
-of the gap itself.
+| area | neighbour | position | overlap strip (EPSG:32634) |
+|---|---|---|---|
+| T34UGV | T34UFV | west | x 699 960–709 800 |
+| T34UGV | T34UGA | north | y 5 490 240–5 500 020 |
+| T34UGV | T34UGU | south | y 5 390 220–5 400 000 |
+| T34UGV | T35ULP | south-east corner | UTM 35 tile, reprojected |
+| T34UGVE | T34UGA | north-west | 10 km strip |
+| T34UGVE | T35ULP | south | 10 km strip |
 
-## Levels
+The strips cover the Carpathian foothills, the Dniester valley, forest and arable land, i.e. the same landscape types
+as the gap itself.
 
-1. **Implementation check.** The Earth Engine array code is compared with the independent NumPy implementation
-   on the same smoothed series (300 pixels). Expected: differences at float32 rounding level.
+**Leave-one-strip-out cross-validation.** The correction model is trained on all strips but one and tested on the
+remaining strip, which does not take part in training and thus represents the situation of the gap. The procedure is
+repeated for each strip and the metrics are averaged. T34UGV has four strips, T34UGVE two (train on one, test on the
+other). Each strip contributes 200 000 random pixels per year.
+
+## 2. Metrics
+
+Number of pixels, Pearson's r, bias (reconstructed − official), MAE, RMSE, relative RMSE (rRMSE, % of the official
+mean), ordinary least squares slope and intercept, ratio of standard deviations (reconstructed / official) and the
+share of pixels with a valid season in each source.
+
+## 3. Implementation checks
+
+1. **Earth Engine against NumPy.** The Earth Engine array code and the independent NumPy implementation
+   (`phenology_np.py`) were applied to the same smoothed series at 291 random pixels. The results are identical
+   (maximum absolute difference 0 for AMPL, LENGTH, RSLOPE, MAXV, MINV, SOS and EOS; 5.7 × 10⁻¹⁴ for TPROD).
 2. **Unit tests.** The NumPy implementation is tested on synthetic double-logistic curves with analytically known
-   SOS, EOS, amplitude and integral (`tests/test_phenology_np.py`), and the raster encoding and overlap logic are
-   tested on synthetic GeoTIFFs (`tests/test_postprocess_validate.py`).
-3. **Accuracy check (point-based).** `N_VALIDATION_POINTS` random pixel centres per strip and year (default 3 000
-   × 3 strips) for AMPL, LENGTH, RSLOPE, TPROD.
-4. **Accuracy check (full overlap).** After the full export, all pixels of the strips.
-5. **Reproducibility.** Repeated Earth Engine sampling with a fixed seed must be identical. SHA-256 checksums of
-   the official downloads are stored so a re-download can be compared file by file.
+   start and end of season, amplitude and integral (`tests/test_phenology_np.py`); raster encoding, overlap logic and
+   download checks are tested on synthetic GeoTIFFs (`tests/test_postprocess_validate.py`).
+3. **Reproducibility.** Repeated Earth Engine sampling with a fixed seed gives identical results. Every downloaded
+   official file is checked for completeness (`DOWNLOAD_INTEGRITY.md`), and SHA-256 checksums are stored so that a
+   later download can be compared file by file.
 
-## Metrics
+## 4. Results for the delivered files
 
-n, Pearson r, bias (reconstructed − official), MAE, RMSE, relative RMSE (% of the official mean), OLS slope and
-intercept, and the share of pixels with a valid season in each source.
+### 4.1 T34UGV, 2017–2024
 
-## Acceptance guidance (proposed, to be agreed with WP3)
+Held-out rRMSE in %, before → after correction, with Pearson's r in brackets (`reports/11_loso_all_years.csv`;
+for 2024 only rRMSE is tabulated):
 
-The reconstructed tile is a covariate source for a model, not a reference dataset. As a pragmatic threshold, its
-error should be clearly smaller than the between-pixel variability of the official product in the same landscape:
+| year | AMPL | LENGTH | RSLOPE | TPROD |
+|---|---|---|---|---|
+| 2017 | 36.4 (0.81) → 24.3 (0.85) | 19.9 (0.70) → 15.9 (0.80) | 67.5 (0.53) → 49.5 (0.79) | 17.2 (0.93) → 16.0 (0.93) |
+| 2018 | 34.2 (0.85) → 21.0 (0.87) | 20.0 (0.67) → 15.4 (0.80) | 67.0 (0.61) → 49.9 (0.81) | 17.2 (0.93) → 15.4 (0.93) |
+| 2019 | 34.2 (0.85) → 19.6 (0.87) | 19.0 (0.74) → 13.4 (0.84) | 60.6 (0.58) → 39.0 (0.83) | 18.0 (0.94) → 13.5 (0.94) |
+| 2020 | 51.0 (0.78) → 26.1 (0.81) | 21.6 (0.62) → 15.9 (0.79) | 64.2 (0.49) → 50.2 (0.75) | 23.2 (0.90) → 17.0 (0.90) |
+| 2021 | 24.8 (0.82) → 20.2 (0.85) | 18.0 (0.73) → 13.7 (0.83) | 64.0 (0.66) → 40.2 (0.84) | 14.7 (0.92) → 14.8 (0.93) |
+| 2022 | 30.0 (0.84) → 22.2 (0.88) | 21.9 (0.67) → 19.3 (0.77) | 65.2 (0.53) → 50.7 (0.75) | 17.8 (0.93) → 16.6 (0.94) |
+| 2023 | 29.0 (0.85) → 22.4 (0.87) | 19.9 (0.70) → 15.5 (0.82) | 67.3 (0.67) → 46.5 (0.85) | 18.0 (0.91) → 18.2 (0.92) |
+| 2024 | 30.2 → 21.8 | 17.8 → 14.4 | 68.6 → 42.7 | 18.6 → 17.8 |
 
-| product | proposed acceptance |
+After correction the ratio of standard deviations is 0.95–1.05 for every parameter and year (0.58–1.16 before), so
+the reconstructed tile has the spatial variability of its neighbours. The correction gives the largest gain for
+RSLOPE and LENGTH and for 2020. For TPROD it mainly removes the positive bias of 2017–2020; in 2021 and 2023 the rRMSE
+is unchanged within 0.3 percentage points. 98.9–99.1 % of the tile has a valid season in every year.
+
+### 4.2 T34UGVE, 2018–2024
+
+The extension was reconstructed with `gee/hrvpp_recon_patch.js` in the Earth Engine Code Editor. Earth Engine wrote
+each year in three row shards, which were mosaicked with a grid check for every year
+(`notebooks/experiments/production_colleague_ee.py`). The correction is trained on the extension's own overlap with
+T34UGA and T35ULP. Held-out rRMSE in %, before → after correction (`reports/13_colleague_loso_<year>.csv`):
+
+| year | AMPL | LENGTH | RSLOPE | TPROD |
+|---|---|---|---|---|
+| 2018 | 44.6 → 29.1 | 28.8 → 20.2 | 61.9 → 49.3 | 25.5 → 20.8 |
+| 2019 | 33.6 → 24.7 | 19.9 → 18.3 | 57.7 → 42.3 | 17.5 → 15.9 |
+| 2020 | 40.2 → 25.2 | 27.8 → 18.5 | 58.0 → 44.8 | 21.8 → 18.4 |
+| 2021 | 27.1 → 20.1 | 23.4 → 16.0 | 59.9 → 33.8 | 18.0 → 16.4 |
+| 2022 | 38.7 → 27.4 | 23.8 → 20.8 | 62.5 → 47.8 | 21.1 → 18.5 |
+| 2023 | 27.8 → 22.0 | 23.7 → 17.6 | 58.8 → 34.8 | 18.2 → 20.1 |
+| 2024 | 29.6 → 23.4 | 22.4 → 17.7 | 59.7 → 33.2 | 19.6 → 20.8 |
+
+In 2023 and 2024 the correction slightly increases the TPROD error, because the uncorrected values are already close
+to the official ones. It is applied in all years to keep the variance consistent across years. The extension for 2017
+is corrected with the T34UGV model of the same year and has no separate held-out check.
+
+### 4.3 Joint between T34UGVE and T34UGV
+
+In the 10 km overlap of the two corrected reconstructions (500 000 pixels per year) r is 0.96–0.99 for AMPL,
+0.97–0.98 for LENGTH, 0.96–0.98 for RSLOPE and 0.98–0.99 for TPROD; rRMSE is 6–12 %, 8–10 %, 16–21 % and 7–10 %
+respectively. The season in T34UGVE is 5–8 days longer than in T34UGV, because the two areas are corrected with
+models trained on different strips. The difference is small but can be seen in LENGTH maps.
+
+### 4.4 Comparison of two independent implementations
+
+T34UGVE was also reconstructed for 2021 and 2024 with the GPU implementation (`s2local.py`, Sentinel-2 Level-2A
+from Microsoft Planetary Computer, SCL cloud mask, correction trained on the T34UGV strips). Agreement with the Earth
+Engine version on the same grid (bias = GPU − Earth Engine):
+
+| year | level | AMPL r / rRMSE | LENGTH r / rRMSE / bias | RSLOPE r / rRMSE | TPROD r / rRMSE |
+|---|---|---|---|---|---|
+| 2021 | raw | 0.90 / 15.0 % | 0.89 / 15.7 % / +1.8 d | 0.81 / 38.2 % | 0.94 / 15.6 % |
+| 2021 | corrected | 0.89 / 17.9 % | 0.93 / 13.0 % / −6.9 d | 0.91 / 28.3 % | 0.92 / 15.4 % |
+| 2024 | raw | 0.97 / 6.9 % | 0.96 / 10.2 % / −0.8 d | 0.95 / 19.7 % | 0.99 / 6.2 % |
+| 2024 | corrected | 0.95 / 13.0 % | 0.96 / 12.9 % / −8.7 d | 0.96 / 21.2 % | 0.96 / 13.0 % |
+
+The uncorrected parameters agree closely, best in 2024. After correction the main difference is season length, which
+is 7–9 days shorter in the GPU version because its model was trained on different strips. The Earth Engine version is
+delivered, since it joins T34UGV better and is corrected on the extension's own neighbours. The GPU files are kept in
+`Copernicus_Phenology_gpu/` as an independent check.
+
+### 4.5 Recommendations for use
+
+The reconstructed files are intended as covariates for models, not as reference data. The following thresholds were
+proposed for acceptance (to be agreed with WP3):
+
+| parameter | proposed threshold |
 |---|---|
 | AMPL | r ≥ 0.80, abs(bias) ≤ 0.10 PPI |
 | TPROD | r ≥ 0.80, rRMSE ≤ 20 % |
 | LENGTH | r ≥ 0.60, abs(bias) ≤ 15 days |
-| RSLOPE | r ≥ 0.50 (the noisiest parameter) |
+| RSLOPE | r ≥ 0.50 |
 
-If a product fails, the recommended action for MONIFUN is to keep the product as missing for T34UGV plots
-(or flag the plots) rather than use the reconstruction.
+For T34UGV in 2017–2023 the corrected values meet the r and rRMSE thresholds for all four parameters (section 4.1).
+For T34UGVE the TPROD rRMSE is 20.8 % in 2018 and 2024, marginally above the proposed 20 %. RSLOPE remains the least
+accurate parameter (rRMSE 33–51 %) and should be used with caution. The year 2020 is the least accurate for all parameters; plots in
+the reconstructed areas should be flagged for this year or given a lower weight.
 
-## Results for 2021 (run of 08/11/2026)
+## Appendix A. First delivery: uncorrected values and linear calibration, 2017–2023
 
-Earth Engine noncommercial project; 1 828 Sentinel-2 scenes in the 2021 window; 99.7 % of T34UGV
-received a valid season.
+The first delivery (08–09/11/2026) used three overlap strips (T34UFV, T34UGA, T34UGU) and a linear calibration of
+AMPL and RSLOPE only. These files are kept in `Copernicus_Phenology_v1_linear/`. For each year the official
+neighbours were downloaded from WEkEO (72 files), and 1 000 000 random pixels per strip were compared.
 
-**Implementation check.** On 291 random pixels, the Earth Engine metrics and the NumPy reference agree exactly
-(maximum absolute difference 0 for AMPL, LENGTH, RSLOPE, MAXV, MINV, SOS, EOS; 5.7e-14 for TPROD).
-
-**Accuracy, full overlap** (exported 10 m tile vs official V105 tiles; 1 000 000 random pixels per strip; the
-pixel-centre comparison with 600 points per strip gave the same picture):
+**Uncorrected accuracy, 2021, by strip** (Earth Engine noncommercial project; 1 828 Sentinel-2 scenes in the 2021
+window; 99.7 % of T34UGV with a valid season):
 
 | strip | product | r | bias | RMSE | rRMSE % | valid in both % |
 |---|---|---|---|---|---|---|
@@ -73,8 +155,8 @@ pixel-centre comparison with 600 points per strip gave the same picture):
 | T34UGU | RSLOPE | 0.587 | −0.008 | 0.014 | 66.1 | 99.5 |
 | T34UGU | TPROD | 0.921 | −2.2 | 25.4 | 15.0 | 99.5 |
 
-**Leave-one-strip-out linear calibration** (official = k · recon + c fitted on two strips, tested on the third; mean
-over the three tests):
+**Leave-one-strip-out linear calibration, 2021** (official = k · reconstructed + c, fitted on two strips and tested on
+the third; mean of the three tests):
 
 | product | r | bias raw → cal | rRMSE raw → cal % | decision |
 |---|---|---|---|---|
@@ -83,30 +165,7 @@ over the three tests):
 | LENGTH | 0.710 | +6.2 d → +0.5 d | 19.3 → 17.2 | keep uncalibrated: passes thresholds; k = 0.69 would compress natural variance |
 | TPROD | 0.925 | +1.1 → 0.0 | 14.9 → 15.2 | keep uncalibrated: no gain |
 
-**Against the acceptance thresholds:** TPROD and LENGTH pass uncalibrated; AMPL passes after calibration (bias within
-±0.10 in every held-out strip); RSLOPE passes the r threshold and is unbiased after calibration but remains the
-noisiest parameter (rRMSE ≈ 50 %), as expected from the different slope definition (10-day differences vs TIMESAT
-derivative). For every year the calibration is re-fitted on that year's own overlap strips
-(`validate.strip_calibration`) and written to the GeoTIFF tag `CALIBRATION`.
-
-**Cause of the AMPL bias.** The first guess was a clipped winter minimum (MINV = 0 where winter DVI falls below the
-constant soil DVI). The soil-DVI sensitivity test below rejects it: the bias grows as fewer pixels are clipped.
-The bias therefore comes from the peak side (MAXV), which has not been checked yet because the official MAXV
-files were not downloaded.
-
-**Reproducibility.** Downloads are integrity-checked (two truncated WEkEO transfers were caught and repeated during
-this run); the export file is read back and validated before use.
-
-## Results for 2017–2023 (run of 08–09/11/2026)
-
-Same protocol for every year: official neighbours of that year downloaded from WEkEO (72 files; two more truncated
-transfers, 2018 AMPL T34UGU and 2020 RSLOPE T34UFV, were detected and re-downloaded), full-overlap comparison on
-1 000 000 random pixels per strip, calibration fitted on that year's own strips. All 28 product-year files
-(4 products × 7 years) are written in the MONIFUN layout; 98.9–99.1 % of the tile has a valid season in every year.
-Tables: `reports/06_validation_full_overlap_all_years.csv`, `06_loso_calibration_all_years.csv`,
-`06_per_strip_all_years.csv`, `calibration_YYYY.json`, `07_years_status.json`.
-
-**Uncalibrated accuracy** (mean of the three strips; bias = reconstructed − official):
+**Uncorrected accuracy by year** (mean of the three strips):
 
 | year | AMPL r | AMPL bias | LENGTH r | LENGTH bias d | RSLOPE r | TPROD r | TPROD bias | TPROD rRMSE % |
 |---|---|---|---|---|---|---|---|---|
@@ -118,8 +177,8 @@ Tables: `reports/06_validation_full_overlap_all_years.csv`, `06_loso_calibration
 | 2022 | 0.844 | +0.25 | 0.700 | +2.2 | 0.557 | 0.929 | +4.2 | 17.1 |
 | 2023 | 0.854 | +0.28 | 0.691 | +0.8 | 0.662 | 0.920 | +5.8 | 18.0 |
 
-**Calibration actually applied** (official ≈ k · recon + c, all three strips of the year; stored in the GeoTIFF tag
-`CALIBRATION`) and its leave-one-strip-out check (largest held-out abs(bias) after calibration):
+**Linear calibration applied** (all three strips of the year; stored in the GeoTIFF tag `CALIBRATION`) and the
+largest held-out abs(bias) after calibration:
 
 | year | AMPL k, c | AMPL max held-out abs(bias) | RSLOPE k, c | RSLOPE max held-out abs(bias) |
 |---|---|---|---|---|
@@ -131,32 +190,20 @@ Tables: `reports/06_validation_full_overlap_all_years.csv`, `06_loso_calibration
 | 2022 | 0.951, −0.159 | 0.058 | 1.016, 0.0052 | 0.0032 |
 | 2023 | 0.989, −0.263 | 0.055 | 1.139, 0.0033 | 0.0049 |
 
-Mean held-out AMPL rRMSE falls from 24–51 % to 20–28 % after calibration; RSLOPE from 60–66 % to 52–64 %.
+Calibration reduced the mean held-out rRMSE of AMPL from 24–51 % to 20–28 % and of RSLOPE from 60–66 % to 52–64 %.
+The coefficients differ between years (AMPL k 0.78–0.99), so the calibration has to be fitted per year. LENGTH and
+TPROD were left uncalibrated in this version; TPROD in 2020 exceeded the 20 % threshold (23.4 %).
 
-**Against the acceptance thresholds**
+The positive AMPL bias was first attributed to a clipped winter minimum (MINV = 0 where winter DVI falls below the
+constant soil DVI). The sensitivity test in Appendix B does not support this: the bias increases as fewer pixels are
+clipped. The bias therefore originates on the peak side (MAXV); this was not tested further because the official MAXV
+files were not downloaded.
 
-- **AMPL** passes in every year after calibration (held-out abs(bias) ≤ 0.10 in all 21 strip-years). Uncalibrated r
-  is 0.79–0.86; 2020 is marginally below 0.80. The coefficients differ between years (k 0.78–0.99, c −0.26 to −0.03),
-  which confirms that the calibration must be fitted per year, not once.
-- **LENGTH** passes uncalibrated in every year (r 0.62–0.71, abs(bias) ≤ 8 days). Calibration is not applied: the
-  held-out check is inconsistent (it worsens 2020 and 2023).
-- **RSLOPE** passes r ≥ 0.50 in 6 of 7 years (2020: 0.494) and is unbiased after calibration, but remains the noisiest
-  parameter (rRMSE 52–64 %). Use with caution.
-- **TPROD** has the highest correlation (0.90–0.94) and passes in 6 of 7 years. **2020 fails** the rRMSE threshold
-  uncalibrated (23.4 %, bias +21); a linear calibration would bring it to 17.3 % in the held-out check. In 2017–2019
-  the positive bias (+10 to +15) is also visible. A year-specific TPROD calibration is therefore an option for WP3
-  to decide; it is not applied in the delivered files.
-- **2020** is the weakest year for every product (lower r, larger biases). Users should flag T34UGV plots in 2020
-  or treat them with lower weight.
+## Appendix B. Sensitivity to the soil DVI
 
-The positive AMPL bias in all years is not explained by the soil DVI (see the sensitivity test below). Why 2020 is
-weaker has not been investigated yet (candidates: winter observation density, the 2020 spring drought).
-
-## Iteration 2: sensitivity to the soil DVI (09/11/2026)
-
-The constant soil DVI (0.09) was varied on three 4 × 4 km blocks, one in each overlap strip (≈ 478 000 pixels per
-setting, batch exports; `reports/08_sensitivity_dvi_soil_2021.csv`, `..._2020.csv`). Values are means over the
-three blocks, uncalibrated.
+The constant soil DVI (0.09) was varied on three 4 × 4 km blocks, one in each overlap strip (about 478 000 pixels per
+setting; `reports/08_sensitivity_dvi_soil_2021.csv`, `..._2020.csv`). Values are means over the three blocks,
+without correction.
 
 **2021**
 
@@ -170,7 +217,7 @@ three blocks, uncalibrated.
 | 0.15 | 0.783 / +0.10 | 0.800 / −11.4 | 0.639 | 0.935 / −24.2 / 19.0 | 80 |
 | 0.18 | 0.777 / +0.01 | 0.785 / −18.7 | 0.649 | 0.933 / −38.7 / 25.9 | 92 |
 
-**2020 (weakest year)**
+**2020**
 
 | soil DVI | AMPL r / bias | LENGTH r / bias d | RSLOPE r | TPROD r / bias / rRMSE % |
 |---|---|---|---|---|
@@ -178,24 +225,16 @@ three blocks, uncalibrated.
 | 0.11 | 0.680 / +0.57 | 0.724 / −9.4 | 0.467 | 0.880 / +17.8 / 21.0 |
 | 0.13 | 0.675 / +0.52 | 0.718 / −14.0 | 0.491 | 0.877 / +8.6 / 18.1 |
 
-**Conclusions**
+Raising the soil DVI by 0.02 shortens LENGTH by about 4–5.5 days and lowers TPROD by about 9 units in both years. It
+shifts the biases but does not remove their differences between years: at the same setting LENGTH is +4.6 days in
+2021 and −5.0 days in 2020, so a value that suits one year degrades the other. Correlations of AMPL and TPROD hardly
+change; RSLOPE improves slightly at higher values. The value 0.09 was kept, and the biases are removed by the
+per-year correction instead.
 
-1. Raising the soil DVI shifts LENGTH down by ≈ 4–5.5 days and TPROD down by ≈ 9 units per 0.02 step, in both years.
-   It moves the biases but does not remove their year-to-year differences: LENGTH is +4.6 days in 2021 and −5.0 days
-   in 2020 at the same setting, so any single value that fixes one year worsens the other.
-2. Correlations hardly change for AMPL and TPROD; RSLOPE gains slightly at higher values.
-3. **Decision:** keep 0.09 and the delivered files unchanged. A per-year linear calibration on the overlap strips
-   removes the same biases without re-running the reconstruction, and is already applied to AMPL and RSLOPE.
-   Extending it to TPROD in 2020 (and possibly 2017–2019) is the cheaper fix if WP3 wants it.
-4. Next candidates for the remaining AMPL bias: the peak side (MAXV, the tile-constant δ in MDVI, the median
-   compositing). Testing them needs the official MAXV and MINV files of the neighbours.
+## Appendix C. Choice of the correction method
 
-## Iteration 3: correction learned from the official tiles (10/11/2026)
-
-Prompted by the visible seam between the patch and the official tiles. Training data: the overlap strips with
-T34UFV, T34UGA, T34UGU and, new, T35ULP (south-east corner, reprojected from UTM 35); 200 000 pixels per strip.
-Leave-one-strip-out: each strip is predicted by a model trained on the other three. Means over the four held-out
-strips, 2021 (`reports/10_learned_correction_loso_2021.csv`):
+Five options were compared by leave-one-strip-out cross-validation on 2021 with four strips (T34UFV, T34UGA, T34UGU,
+T35ULP), 200 000 pixels per strip; means over the four held-out strips (`reports/10_learned_correction_loso_2021.csv`):
 
 | product | method | r | abs(bias) | rRMSE % | std ratio (est / official) |
 |---|---|---|---|---|---|
@@ -203,97 +242,28 @@ strips, 2021 (`reports/10_learned_correction_loso_2021.csv`):
 | AMPL | linear (v1) | 0.817 | 0.070 | 21.7 | 0.80 |
 | AMPL | quantile mapping | 0.814 | 0.098 | 22.9 | 0.98 |
 | AMPL | gradient boosting | 0.859 | 0.047 | 19.1 | 0.85 |
-| AMPL | **gradient boosting + quantile mapping** | 0.857 | 0.062 | 19.9 | 0.98 |
+| AMPL | gradient boosting + quantile mapping (selected) | 0.857 | 0.062 | 19.9 | 0.98 |
 | LENGTH | none | 0.734 | 5.0 d | 18.0 | 1.02 |
 | LENGTH | linear | 0.734 | 2.6 d | 16.6 | 0.74 |
 | LENGTH | gradient boosting | 0.848 | 1.0 d | 12.4 | 0.84 |
-| LENGTH | **gradient boosting + quantile mapping** | 0.843 | 1.6 d | 13.0 | 0.98 |
+| LENGTH | gradient boosting + quantile mapping (selected) | 0.843 | 1.6 d | 13.0 | 0.98 |
 | RSLOPE | none | 0.664 | 0.009 | 64.0 | 0.58 |
 | RSLOPE | linear (v1) | 0.664 | 0.002 | 53.5 | 0.68 |
 | RSLOPE | gradient boosting | 0.852 | 0.001 | 37.1 | 0.85 |
-| RSLOPE | **gradient boosting + quantile mapping** | 0.852 | 0.001 | 38.4 | 0.98 |
+| RSLOPE | gradient boosting + quantile mapping (selected) | 0.852 | 0.001 | 38.4 | 0.98 |
 | TPROD | none | 0.924 | 4.3 | 14.7 | 0.92 |
 | TPROD | linear | 0.924 | 5.8 | 14.8 | 0.92 |
 | TPROD | gradient boosting | 0.937 | 4.0 | 13.4 | 0.94 |
-| TPROD | **gradient boosting + quantile mapping** | 0.935 | 4.1 | 13.9 | 1.01 |
+| TPROD | gradient boosting + quantile mapping (selected) | 0.935 | 4.1 | 13.9 | 1.01 |
 
-The multivariate model gains most where a single parameter of the reconstruction is a poor predictor of its official
-counterpart: RSLOPE (r 0.66 → 0.85) and LENGTH (0.73 → 0.85); the other parameters, above all the season dates,
-carry the information. Plain gradient boosting shrinks the spread (std ratio 0.84–0.94), which makes the patch look
-smoother than its neighbours; the added quantile mapping restores the spread (0.98–1.01) at a small cost in RMSE.
-**Decision:** gradient boosting + quantile mapping for all four products, fitted per year on that year's strips.
+The multivariate model gains most for RSLOPE (r 0.66 → 0.85) and LENGTH (0.73 → 0.85), whose official values are
+better predicted by the combination of reconstructed parameters and season dates than by the corresponding single
+parameter. Gradient boosting alone reduces the variance (standard deviation ratio 0.84–0.94); the added quantile
+mapping restores it (0.98–1.01) at a small cost in RMSE. Gradient boosting with quantile mapping was selected for all
+four parameters, fitted per year.
 
-**Model size.** The table above uses 300 trees × 63 leaves. Predicting a whole tile (120 M pixels) with that model
-takes about 1.5 h per product on the 2-CPU Colab runtime, so production uses 40 trees × 15 leaves: 9 times faster,
-held-out rRMSE (2021) AMPL 19.3 instead of 19.0 %, RSLOPE 38.6 instead of 37.1 %, LENGTH 12.9 instead of 12.4 %.
-A third-order polynomial ridge regression was also tested (AMPL 19.8, RSLOPE 40.4, LENGTH 13.1, TPROD 13.8 %) and is
-slightly worse at similar speed.
-
-### Production results 2017–2023 (10/11/2026)
-
-Same protocol for every year, four strips (T34UFV, T34UGA, T34UGU, T35ULP), production model (40 trees × 15 leaves)
-plus quantile mapping; held-out means (`reports/11_loso_all_years.csv`). rRMSE in %, r in brackets:
-
-| year | AMPL none → corrected | LENGTH none → corrected | RSLOPE none → corrected | TPROD none → corrected |
-|---|---|---|---|---|
-| 2017 | 36.4 (0.81) → 24.3 (0.85) | 19.9 (0.70) → 15.9 (0.80) | 67.5 (0.53) → 49.5 (0.79) | 17.2 (0.93) → 16.0 (0.93) |
-| 2018 | 34.2 (0.85) → 21.0 (0.87) | 20.0 (0.67) → 15.4 (0.80) | 67.0 (0.61) → 49.9 (0.81) | 17.2 (0.93) → 15.4 (0.93) |
-| 2019 | 34.2 (0.85) → 19.6 (0.87) | 19.0 (0.74) → 13.4 (0.84) | 60.6 (0.58) → 39.0 (0.83) | 18.0 (0.94) → 13.5 (0.94) |
-| 2020 | 51.0 (0.78) → 26.1 (0.81) | 21.6 (0.62) → 15.9 (0.79) | 64.2 (0.49) → 50.2 (0.75) | 23.2 (0.90) → 17.0 (0.90) |
-| 2021 | 24.8 (0.82) → 20.2 (0.85) | 18.0 (0.73) → 13.7 (0.83) | 64.0 (0.66) → 40.2 (0.84) | 14.7 (0.92) → 14.8 (0.93) |
-| 2022 | 30.0 (0.84) → 22.2 (0.88) | 21.9 (0.67) → 19.3 (0.77) | 65.2 (0.53) → 50.7 (0.75) | 17.8 (0.93) → 16.6 (0.94) |
-| 2023 | 29.0 (0.85) → 22.4 (0.87) | 19.9 (0.70) → 15.5 (0.82) | 67.3 (0.67) → 46.5 (0.85) | 18.0 (0.91) → 18.2 (0.92) |
-
-The standard deviation of the corrected values is 0.95–1.05 of the official one in every product-year (uncorrected
-0.58–1.16), i.e. the patch now has the spread of its neighbours. The gain is largest for RSLOPE and LENGTH and for
-the weakest year 2020; for TPROD the correction mainly removes the 2017–2020 bias and matches the spread (rRMSE is
-within 0.3 points of the uncorrected value in 2021 and 2023). All 28 files 2017–2023 for T34UGV are in
-`Copernicus_Phenology/` with the official band description, unit and PhysRange tag; the first delivery is kept in
-`Copernicus_Phenology_v1_linear/`. 2024 and the extension T34UGVE depend on the Earth Engine exports still running.
-
-## East extension T34UGVE 2018–2024 from a colleague's Earth Engine run (12/11/2026)
-
-The extension (EPSG:32634, x 799760–869760, y 5390220–5560020, 7000 × 16980 px) was computed with
-`gee/hrvpp_recon_patch.js` in the Code Editor under a colleague's Earth Engine quota (2018–2025; Earth Engine split
-each year into three row shards). `notebooks/experiments/production_colleague_ee.py` mosaics the shards (grid
-checked against the expected one for every year), learns the gbm_qm correction on the extension's own overlap with
-the official T34UGA (10 km strip in the north-west) and T35ULP, and writes `Copernicus_Phenology/<P>/<Y>/
-VPP_<Y>_S2_T34UGVE-010m_RECON_s1_<P>.tif`. The T34UGV raw exports used for the 2017 extension are no longer on
-Drive, so the extension is calibrated on its own official neighbours here. 2025 is not processed: there is no
-official HR-VPP 2025 to calibrate or check against.
-
-Leave-one-neighbour-out (train on T34UGA, test on T35ULP and the other way round), mean rRMSE %,
-uncorrected → corrected (`reports/13_colleague_loso_<year>.csv`):
-
-| year | AMPL | LENGTH | RSLOPE | TPROD |
-|---|---|---|---|---|
-| 2018 | 44.6 → 29.1 | 28.8 → 20.2 | 61.9 → 49.3 | 25.5 → 20.8 |
-| 2019 | 33.6 → 24.7 | 19.9 → 18.3 | 57.7 → 42.3 | 17.5 → 15.9 |
-| 2020 | 40.2 → 25.2 | 27.8 → 18.5 | 58.0 → 44.8 | 21.8 → 18.4 |
-| 2021 | 27.1 → 20.1 | 23.4 → 16.0 | 59.9 → 33.8 | 18.0 → 16.4 |
-| 2022 | 38.7 → 27.4 | 23.8 → 20.8 | 62.5 → 47.8 | 21.1 → 18.5 |
-| 2023 | 27.8 → 22.0 | 23.7 → 17.6 | 58.8 → 34.8 | 18.2 → 20.1 |
-| 2024 | 29.6 → 23.4 | 22.4 → 17.7 | 59.7 → 33.2 | 19.6 → 20.8 |
-
-For TPROD the correction does not help in 2023 and 2024 (the raw values are already close); it is kept for a
-consistent spread across years.
-
-Agreement with the corrected T34UGV in the 10 km overlap (`reports/13_colleague_<year>.json`, 500 000 pixels):
-r 0.96–0.99 for AMPL, 0.97–0.98 LENGTH, 0.96–0.98 RSLOPE, 0.98–0.99 TPROD; rRMSE 6–12 %, 8–10 %, 16–21 %, 7–10 %.
-The extension's season is 5–8 days longer than in T34UGV (T34UGV is calibrated on four strips, the extension on two),
-so the seam is small but present in LENGTH.
-
-Cross-check with the independent GPU pipeline (Sentinel-2 L2A from Planetary Computer, SCL mask, correction trained
-on the T34UGV strips) on the same grid:
-
-| year | level | AMPL r / rRMSE | LENGTH r / rRMSE / bias | RSLOPE r / rRMSE | TPROD r / rRMSE |
-|---|---|---|---|---|---|
-| 2021 | raw | 0.90 / 15.0 % | 0.89 / 15.7 % / +1.8 d | 0.81 / 38.2 % | 0.94 / 15.6 % |
-| 2021 | corrected | 0.89 / 17.9 % | 0.93 / 13.0 % / −6.9 d | 0.91 / 28.3 % | 0.92 / 15.4 % |
-| 2024 | raw | 0.97 / 6.9 % | 0.96 / 10.2 % / −0.8 d | 0.95 / 19.7 % | 0.99 / 6.2 % |
-| 2024 | corrected | 0.95 / 13.0 % | 0.96 / 12.9 % / −8.7 d | 0.96 / 21.2 % | 0.96 / 13.0 % |
-
-(bias = GPU − Earth Engine). The two implementations agree well on the raw metrics, best in 2024; after correction
-the remaining difference is mostly the season length, where the GPU version is 7–9 days shorter because its model
-comes from different strips. The Earth Engine version is kept as the delivery (better seam with T34UGV, calibrated
-on the extension's own neighbours); the GPU files stay in `Copernicus_Phenology_gpu/` as an independent check.
+**Model size.** The comparison above uses 300 trees with 63 leaves. Applying this model to a full tile (120 million
+pixels) takes about 1.5 hours per parameter on a 2-CPU Colab runtime. The production model has 40 trees with 15
+leaves and is nine times faster; its held-out rRMSE for 2021 is 19.3 % instead of 19.0 % for AMPL, 38.6 % instead
+of 37.1 % for RSLOPE and 12.9 % instead of 12.4 % for LENGTH. A third-order polynomial ridge regression was also
+tested (AMPL 19.8 %, RSLOPE 40.4 %, LENGTH 13.1 %, TPROD 13.8 %) and was slightly less accurate at similar speed.

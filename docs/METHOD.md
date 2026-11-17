@@ -4,7 +4,7 @@
 
 The MONIFUN WP3 workflow downloads the Copernicus Land Monitoring Service (CLMS) High Resolution
 Vegetation Phenology and Productivity (HR-VPP) parameters `AMPL`, `LENGTH`, `RSLOPE` and `TPROD`
-(season 1, 2017–2023) through the WEkEO Harmonised Data Access (HDA) API
+(season 1) through the WEkEO Harmonised Data Access (HDA) API
 (dataset `EO:EEA:DAT:CLMS_HRVPP_VPP`, `productGroupId = s1`).
 
 For western Ukraine the delivered mosaic has a rectangular hole. The hole corresponds exactly to the
@@ -26,7 +26,7 @@ Evidence (08/11/2026):
 * The CLMS WMTS (`phenology.vgt.vito.be/wmts`) shows no data inside the footprint for 2017–2024, in both the
   UTM and the LAEA layers.
 
-The gap is therefore a production gap. Re-downloading cannot fill it.
+The gap is therefore a production gap and cannot be filled by downloading again.
 
 **Wider gap east of T34UGV (found 10/11/2026).** Point probes of the catalogue (0.25° × 0.2° grid, 2021 AMPL s1)
 show that there is no official product at all east of ≈25.3° E and north of ≈48.8° N: the UTM-35 tiles north of
@@ -88,10 +88,10 @@ these strips give millions of pixels where both are known, and they are used as 
 
 The method was chosen by a leave-one-strip-out test on 2021 (train on three strips, predict the fourth, which is the
 situation of the gap) against no correction, the earlier linear calibration, quantile mapping alone and gradient
-boosting alone (docs/VALIDATION.md, iteration 3). The multivariate model wins for every product; the quantile step
-costs little accuracy but keeps the standard deviation within 2 % of the official one, which is what makes the patch
-blend in visually. The extension T34UGVE has no official overlap of its own except a strip of T35ULP, so it is
-corrected with the model of T34UGV of the same year and the T35ULP strip is kept as an independent check.
+boosting alone (docs/VALIDATION.md, Appendix C). The multivariate model has the lowest error for every product. The
+quantile step increases rRMSE slightly but keeps the standard deviation within 2 % of the official one, so the
+reconstructed tile has the same spatial variability as its neighbours. For the extension T34UGVE, 2018–2024, the model
+is trained on its own overlap with T34UGA and T35ULP; for 2017 the model of T34UGV of the same year is applied.
 
 The first delivery (linear calibration of AMPL and RSLOPE only) is kept in `Copernicus_Phenology_v1_linear/`.
 
@@ -109,8 +109,8 @@ This is the folder layout expected by the MONIFUN extraction scripts (`_run_extr
 the GeoTIFF tag `SOURCE = Reconstruction from Sentinel-2 (Earth Engine) - NOT an official CLMS product`.
 
 Band metadata are copied from the official file of the same product, with the year substituted: band description
-(e.g. `Seasonal amplitude 2024-season1`), unit and the band tag `PhysRange`. Before 10/11/2026 the band description
-was the bare product name (`AMPL`), which shows up as a different band name in GIS and extraction tools.
+(e.g. `Seasonal amplitude 2024-season1`), unit and the band tag `PhysRange`. Files written before 10/11/2026 had the product
+name (`AMPL`) as band description; they are kept only in `Copernicus_Phenology_v1_linear/`.
 
 Note on TPROD encoding: the Product User Manual gives a factor of 10 (scale 0.1), while the VITO catalogue band
 metadata gives scale 0.02. The official 2021 V105 files (checked on 08/11/2026) carry **uint16, scale 0.1, nodata
@@ -134,7 +134,7 @@ complete.
 * No TIMESAT double-logistic fitting. Expect slightly noisier SOS/EOS and larger RSLOPE scatter than the official
   product. AMPL and TPROD are least affected.
 * Constant soil DVI and a tile-constant δ in MDVI. This mainly affects sparsely vegetated or bright-soil pixels.
-  Varying the soil DVI only shifts the biases (docs/VALIDATION.md, iteration 2); the learned correction removes them.
+  Varying the soil DVI only shifts the biases (docs/VALIDATION.md, Appendix B); the learned correction removes them.
 * The learned correction is trained in the overlap strips. Landscapes that do not occur in the strips (e.g. high
   Carpathian forest) are extrapolated; the strips do cover forest, arable land and the Dniester valley.
 * 2017 (and partly 2018) rely on L1C top-of-atmosphere reflectance where L2A is missing in Earth Engine. PPI from TOA
@@ -143,8 +143,8 @@ complete.
 
 ## 7. References
 
-* CLMS (2023). HR-VPP ATBD — Daily raw vegetation indices, issue 1.1 (PPI formula, §5.2.1).
-* CLMS. HR-VPP Product User Manual — Seasonal Trajectories and VPP parameters, issue 2.3 (definitions, thresholds,
+* CLMS (2023). HR-VPP ATBD: Daily raw vegetation indices, issue 1.1 (PPI formula, §5.2.1).
+* CLMS. HR-VPP Product User Manual: Seasonal Trajectories and VPP parameters, issue 2.3 (definitions, thresholds,
   encodings).
 * Jin, H., Eklundh, L. (2014). A physically based vegetation index for improved monitoring of plant phenology.
   *Remote Sensing of Environment* 152, 512–525.

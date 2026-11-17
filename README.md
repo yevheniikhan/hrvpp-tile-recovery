@@ -116,13 +116,16 @@ scripts/             command-line steps 1–5 (see above)
 gee/                 Earth Engine Code Editor version of the reconstruction
 notebooks/           Colab notebook; experiments/ holds the scripts as run for the published numbers
 tests/               unit and end-to-end tests on synthetic rasters
-docs/                method, validation, reproduction guide, runbook, MONIFUN download issue
+docs/                method, validation, reproduction guide, runbook, download integrity check
 ```
 
-## Known issue in the MONIFUN download script
+## Note on download integrity
 
-Truncated WEkEO transfers are counted as complete files. `wekeo.py` checks every GeoTIFF and repeats broken
-downloads; the issue and a patch are in [`docs/MONIFUN_ISSUE.md`](docs/MONIFUN_ISSUE.md).
+The MONIFUN download script works as intended in normal conditions. If the WEkEO stream is interrupted, a
+partly written GeoTIFF can remain in the folder, and a check based on the file count does not notice it. This
+happened 4 times in 84 downloads during this work. `wekeo.py` therefore also reads the last row of every GeoTIFF
+and downloads failed files again; details and an optional check are in
+[`docs/DOWNLOAD_INTEGRITY.md`](docs/DOWNLOAD_INTEGRITY.md).
 
 ## Citation and licence
 

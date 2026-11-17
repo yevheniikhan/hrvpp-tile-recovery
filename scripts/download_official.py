@@ -6,7 +6,7 @@
 
 Files land in <data>/official/<PRODUCT>/<YEAR>/ exactly as with MONIFUN download_copernicus_pheno.py.
 Each tile is reached with a tiny bounding box around a point inside it (config.NEIGHBOUR_PROBES, or --probe).
-Truncated transfers are detected and repeated (see docs/MONIFUN_ISSUE.md). Credentials are read from the
+Truncated transfers are detected and repeated (see docs/DOWNLOAD_INTEGRITY.md). Credentials are read from the
 environment (or Colab Secrets) only; nothing is written to disk.
 """
 import argparse

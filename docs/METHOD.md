@@ -120,13 +120,14 @@ still reads the encoding from an official file rather than assuming it.
 Grid check: the official neighbour T34UFV has its upper-left corner at x = 600 000 m, y = 5 500 020 m (EPSG:32634),
 which confirms the Sentinel-2 grid used for T34UGV (x = 699 960 m) and the pixel alignment in the overlap strips.
 
-## 5. Download integrity (issue found in the MONIFUN script)
+## 5. Download integrity
 
-`download_copernicus_pheno.py` decides that a product is complete by counting files in the output folder. An
-interrupted HTTP stream leaves a partial GeoTIFF that is counted as present, so the script reports `ok` for a corrupt
-file. This happened during this work (T34UFV TPROD 2021: 78.6 of 211 MB). `wekeo.py` therefore opens every GeoTIFF and
-reads its last row after each pass, deletes truncated files and downloads them again. It is worth passing this check
-back to the MONIFUN data team, because a truncated tile silently turns into missing values at NFI plots.
+`download_copernicus_pheno.py` treats a product as complete when the number of files in the output folder matches
+the search results. This works when every transfer finishes. If the HTTP stream is interrupted, a partly written
+GeoTIFF remains and is counted as present. This happened a few times during this work (e.g. T34UFV TPROD 2021:
+78.6 of 211 MB). `wekeo.py` therefore also opens every GeoTIFF after each pass, reads its last row, deletes files
+that fail and downloads them again. The same check can be run once over existing downloads to confirm they are
+complete.
 
 ## 6. Known limitations
 
